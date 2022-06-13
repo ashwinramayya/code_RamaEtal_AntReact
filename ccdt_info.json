@@ -1,0 +1,124 @@
+{
+    "dirs": 
+        {"data": "/Users/ashwinramayya/Dropbox/neurosurgery_research/data/CCDT/",
+         "eventsDir": "events/",
+         "eegDir": "eeg/"},
+    
+    "subjects": [
+    {
+        "subj" : "HUP133",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP136",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP139",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP140",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP142",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP143",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP145",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP146",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP150",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP152",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP153",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP154",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP157",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP160",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP165",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP168",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP171",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP178",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP179",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP181",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP182",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP187",
+        "exp": "ccdt",
+        "exclude": false
+    },
+    {
+        "subj" : "HUP191",
+        "exp": "ccdt",
+        "exclude": false
+    } 
+    ]
+}
