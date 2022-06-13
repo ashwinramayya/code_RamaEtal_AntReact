@@ -1,4 +1,4 @@
-# RamayyaEtAl_XX_AntReact
+# RamayyaEtAl_AntReact
 Code base associated with the following manuscript that is under peer-review: "Anticipatory influences on simple sensory-motor behaviors are encoded by rapidly fluctuating neural dynamics across the human brain:
 
 
