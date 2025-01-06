@@ -15,7 +15,7 @@ import pandas as pd
 import mne
 import json as json
 from scipy.io import loadmat # to load matlab
-from scipy import stats,ndimage,signal,optimize, cluster
+from scipy import stats,ndimage,signal,optimize,cluster
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
 import pingouin as pg
@@ -372,7 +372,7 @@ class Subject:
 
 
 
-    def anat2roi(self,anat):
+    def anat2roi(self,anat,split_insula=False):
         """Takes 'anat' a string indicating anatomical label and returns 'roi' a string indicating reigon of interest"""
         # occipital
         if anat in ['MOG middle occipital gyrus', \
@@ -452,7 +452,16 @@ class Subject:
 
         # INSULA    
         elif anat in ['PIns posterior insula','AIns anterior insula','Insula_wm']:
-            roi = 'Insula'
+            if split_insula==True:
+                if anat == 'AIns anterior insula':
+                    roi = 'InsulaAnt'
+                elif anat == 'PIns posterior insula':
+                    roi = 'InsulaPost'
+                else:
+                    roi = 'InsulaWm'
+            else:
+                roi = 'Insula'
+
         #WM tracts 
         elif anat in ['Anterior Thalamic Radiation R','Anterior Thalamic Radiation L',\
                       'Superior Thalamic Radiation L', 'Superior Thalamic Radiation R','Frontal Aslant Tract L','Frontal Aslant Tract R']:#
@@ -486,6 +495,55 @@ class Subject:
         else:
             roi = anat
         return roi
+    def anat2roi_anticipationrois(self,anat):
+        """Takes 'anat' a string indicating anatomical label and returns 'roi' a string indicating reigon of interest"""
+
+
+        # STG
+        if anat in ['STG superior temporal gyrus']:
+            roi = 'STG'
+
+        # CINGULATE DORSAL
+        elif anat in ['Cingulum subsection: Dorsal L', 'Cingulum subsection: Dorsal R']:
+            roi = 'CingulateDorsal'
+
+        # CINGULATE MIDDLE
+        elif anat in ['MCgG middle cingulate gyrus']:
+            roi = 'CingulateMid'
+
+
+
+        # IFG 
+        elif anat in ['OpIFG opercular part of the inferior frontal gyrus',\
+                      'OrIFG orbital part of the inferior frontal gyrus',\
+                      'TrIFG triangular part of the inferior frontal gyrus']:
+ 
+            roi = 'IFG'
+
+        # SMA 
+        elif anat in ['SMC supplementary motor cortex']:
+            roi = 'SMA'
+
+
+        # INSULA - Ant 
+        elif anat in ['AIns anterior insula']:
+            roi = 'InsulaAnt'
+
+        # INSULA - Post
+        elif anat in ['PIns posterior insula']:
+            roi = 'InsulaPost'
+        elif anat in ['MFG middle frontal gyrus']:
+            roi = 'MFG'
+
+
+        # OTHER
+        else:
+            roi = 'OtherRegions'
+        return roi
+
+
+
+
     def loadAtlas_yeo(self):
         """generates an atlas_dictionary the yeo buckner functional connectivity atlas. defaults to 7 network version with thick (liberal) parcellation 
 
@@ -502,7 +560,9 @@ class Subject:
         yeo_img = img.get_fdata()
 
         # get affine (vox -> mni)
-        yeo_aff =img.get_affine()
+        #yeo_aff =img.get_affine()
+        # (update in new version of nilearn)
+        yeo_aff = img.affine 
 
         # compute inverse of affine (mni -> vox)
         yeo_aff_inv = np.linalg.inv(yeo_aff)
@@ -1071,6 +1131,21 @@ class Subject:
                      '\n f stat:'+str(np.round(fstat,2))+\
                      '; pval:'+str(np.round(pval_anov,2)))
 
+    # basic function to convert a pearson r to a fisher z tranform
+    def r2z(self,r):
+        """ Fisher Z transform of correlation coefficient. Formally defined for pearson r but can also be used for Spearman r. https://www.statisticshowto.com/fisher-z/
+
+        Myers, L., & Sirois, M. J. (2004). Spearman correlation coefficients, differences between. Encyclopedia of statistical sciences, 12.
+
+
+        ashwinramayya@gmail.com
+
+        """
+
+        z = 0.5*(np.log(1+r)-np.log(1-r))
+
+        return z 
+
     # basic function to make a scatter plot and plot a line of best fit
     def plot_scatter(self,x,y,ax = None,color = '0.5',plotLine=True,polyfit=False,pThresh = 0.05,use_spearman = False,remove_zeros = False,s=None,alpha=0.5,text_lbls = None,fsize_text=12,cmap='viridis',figsize = (7,5),text_offset_x=0, text_offset_y = 0,edgecolor = 'k'):
         # general plotting function to plot a scatter plot for two variables and fit a line. Returns x and y
@@ -1090,9 +1165,9 @@ class Subject:
         if ax == None:
             f = plt.figure(figsize=figsize)
             ax = plt.subplot(111)
-
-
-        plt.scatter(x,y,c=color,edgecolor =edgecolor,alpha = alpha,s = s,cmap=cmap)
+        
+        ax.scatter(x,y,c=color,edgecolor =edgecolor,alpha = alpha,s = s,cmap=cmap)
+  
 
         # if we have a list
         if (text_lbls is None)==False:
@@ -1116,12 +1191,12 @@ class Subject:
                 polymod= np.poly1d(np.polyfit(x, y, 3))
                 x_mod = np.linspace(np.min(x),np.max(x),20)
                 if p_value < pThresh:
-                   plt.plot(x_mod,polymod(x_mod),'r', linestyle='dashed',alpha=0.5)
+                   ax.plot(x_mod,polymod(x_mod),'r', linestyle='dashed',alpha=0.5)
             else:
                 if p_value < pThresh:
                     x_plot = np.linspace(np.min(x),np.max(x),2)
-                    plt.plot(x_plot, intercept + (slope*np.array(x_plot)), 'r', linestyle='dashed',alpha=0.5)
-            plt.title('r = '+str(np.round(r_value,2))+' p ='+str(np.round(p_value,3)))
+                    ax.plot(x_plot, intercept + (slope*np.array(x_plot)), 'r', linestyle='dashed',alpha=0.5)
+            ax.set_title('r = '+str(np.round(r_value,2))+' p ='+str(np.round(p_value,3)),fontsize = fsize_text)
 
             
             return x,y
@@ -1662,15 +1737,14 @@ class Subject:
         rts_A = (choiceEv.query(cond_a_str+'&RT>@fastest_rt_ms&RT<@slowest_rt_ms')['RT_targ']).to_numpy()+cond_a_offset_ms
         rts_B = (choiceEv.query(cond_b_str+'&RT>@fastest_rt_ms&RT<@slowest_rt_ms')['RT_targ']).to_numpy()
 
-        premature_RT_threshold_ms = 250
+        #premature_RT_threshold_ms = 250
         pred_idx_A = choiceEv.query(cond_a_str+'&RT>@fastest_rt_ms&RT<@slowest_rt_ms').eval('RT<@premature_RT_threshold_ms').to_numpy()
         pred_idx_B = choiceEv.query(cond_b_str+'&RT>@fastest_rt_ms&RT<@slowest_rt_ms').eval('RT<@premature_RT_threshold_ms').to_numpy()
 
         return rts_A,rts_B,pred_idx_A,pred_idx_B
 
 
-
-    def fitLATER2_byCondition(self,rts_A,rts_B,pred_idx_A,pred_idx_B,fastest_correct_response_ms = 1750, slowest_correct_response_ms = 2500,fastest_premature_response_ms = 1000,model_type = 'std_bias'):
+    def fitLATER2_byCondition(self,rts_A,rts_B,pred_idx_A,pred_idx_B,fastest_correct_response_ms = 1750, slowest_correct_response_ms = 2500,fastest_premature_response_ms = 1000,model_type = 'std_bias',modeling_strategy = 'Weighted',plot_fit=False,r2_smoothing_factor=10):
         """
         Fit the hybrid LATER model to two RT distributions from different conditions (e.g., short and long foreperiod delay).
 
@@ -1695,6 +1769,10 @@ class Subject:
         (3) We model response times (and prediction times) using the LATER framework that makes  several simplifying assumptions about the process leading up to response. We can conceptually think of the prediction unit as integrating expectation (belief) representations, whereas the reaction unit integrates sensory representations. Noise in each of these representations can be modeled independently
 
         Strategy: Plot reciprocal response times relative to target onset. First fit a gaussian to the premature responses (prediction times). Then fit a gaussian to residual response times
+
+        Update - 02/25/2023
+
+        Introducing an alternative modeling strategy. The original modeling strategy ('weighted') models a predictive rising process using premature responses, which it then amplifies using the bias parameter. The new modeling strategy ('race') first models both a predictive and reactive rising process based on short delay trials, then it studies delay related changes in the parameters of each of these process (Mean, Std, and Distance)
         """
 
         # convert rts to reciprocal rts in seconds. converting to seconds helps interpret gaussian parameters
@@ -1711,6 +1789,74 @@ class Subject:
 
 
         # define subfunctions
+        def later_mean(params,rrts,S0,D0):
+            # fits a basic rate of rise distribution to a Gaussian
+            #params... tuple repesenting model parameters. 
+            #0.... mean of rate of rise (for response unit)
+
+
+            #Inputs
+            #rrts...reciprocal Rts to fit
+            #S0 ... std of rising process
+            #D0 ... distance of rising process (scaling factor)
+            
+            # initialize gaussian object
+            norm = stats.norm(loc = params/D0,scale = S0/D0)
+
+            # error function to calculate negative log likelhood for this distribution
+            err_ = -np.sum(np.log(norm.pdf(rrts)))
+
+            if np.isinf(err_):
+                err_ = 10**6
+
+            return err_
+
+        def later_std(params,rrts,M0,D0):
+            # fits a basic rate of rise distribution to a Gaussian
+            #params... tuple repesenting model parameters. 
+            #0.... std of rate of rise 
+
+
+            #Inputs
+            #rrts...reciprocal Rts to fit
+            #M0 ... mean of rising process
+            #D0 ... distance of rising process (scaling factor)
+            
+            # initialize gaussian object
+            norm = stats.norm(loc = M0/D0,scale = params/D0)
+
+            # error function to calculate negative log likelhood for this distribution
+            err_ = -np.sum(np.log(norm.pdf(rrts)))
+
+            if np.isinf(err_):
+                err_ = 10**6
+
+            return err_
+
+        def later_distance(params,rrts,M0,S0):
+            # fits a basic rate of rise distribution to a Gaussian
+            #params... tuple repesenting model parameters. 
+            #0.... distance of rate of rise (scaling factor)
+
+
+            #Inputs
+            #rrts...reciprocal Rts to fit
+            #M0 ... mean of rising process
+            #S0 ... std of rising process 
+            
+            # initialize gaussian object
+            norm = stats.norm(loc = M0/params,scale = S0/params)
+
+            # error function to calculate negative log likelhood for this distribution
+            err_ = -np.sum(np.log(norm.pdf(rrts)))
+
+            if np.isinf(err_):
+                err_ = 10**6
+
+            return err_
+
+
+
         def later_mean_std(params,rrts):
             # fits a basic rate of rise distribution to a Gaussian
             #params... tuple repesenting model parameters. 
@@ -1730,6 +1876,36 @@ class Subject:
                 err_ = 10**6
 
             return err_
+        
+
+        def uni_scale_cumProb(params,pred_idx,loc,rrt_range):
+            #adjusts the scale of a a uniform distribution to fit the cumulative probability of premature responses distribution of RRTs
+            ##params... tuple repesenting model parameters. 
+            #0.... scale (start of uniform distribution)
+            #1.... scale (loc+scale is the end of the uniform distribution)
+
+
+            # initialize
+            uni = stats.uniform(loc = loc,scale = params)
+
+            # calculate cumulative probability of premature response
+            cumProb_obs = np.mean(pred_idx)
+
+            # calculate cum probability of uniform distribution
+            xvals = np.arange(rrt_range[0],rrt_range[1],0.0001)
+
+            cumProb_exp = uni.cdf(xvals)[-1]
+
+            # error function is mean squared error 
+            err_ = (cumProb_obs-cumProb_exp)**2
+
+            if np.isinf(err_):
+                err_ = 10**6
+
+            return err_            
+
+
+
         def later_mean_std_bias(params,rrts,Mp,Sp):
             # fits a rate of rise distribution to rrts and a bias towards premature responses defined by a separate gaussian of mean Mp and std Sp
             #params... tuple repesenting model parameters. 
@@ -1897,192 +2073,477 @@ class Subject:
                 err_ = 10**6
 
             return err_
-        ### STEP 1: Initial fit of rate of rise distribution associated with premature responses (prediction unit responses).2 free parameters. Mp = mean of rate of rise associated with premature responses, Sp = std of rate of ris distribution for premature responses. Assumes that this is the same distribution across both conditions. 
-
-        # estimate this by fitting all premature responses
-        rpts = np.concatenate((rpts_A,rpts_B))
-
-        # initial guess of Mp0 and Sp0 if there are at least 5 premature responses total
-        if len(rpts)>5:
-            Mp0 = np.mean(rpts)
-            Sp0 = np.std(rpts)
-        else:
-            Mp0 = 1000/fastest_correct_response_ms
-            Sp0 = 0.1
-        # bounds for Mp and Sp
-        # contrain Mp within range of reciprocal premature responses
-        #Mp_bounds = (0.4,1)
-        Mp_bounds =(1000/fastest_correct_response_ms,1000/fastest_premature_response_ms)
-        # constrain std so we dont have run-away variance as a description of bi-modal RTs        
-        Sp_bounds = (0.001,0.1)
-
-        # get M0 and Sp0 based on correct responses from condition A
-        res = optimize.minimize(later_mean_std,x0=(Mp0,Sp0),\
-                            args=(rpts),method='SLSQP',\
-                            bounds=(Mp_bounds,Sp_bounds))
-        Mp = res.x[0]
-        Sp = res.x[1]
+        def later_race_Dpred(params,rrts,Mp,Sp,Mr,Sr):
+            # models rrts as a race between two rising processes (joint probability distribution of a predictive and reactive process)
+            # params...tuple representing model params
+            # 0 ... distance of predictive rising process
 
 
-        ### STEP 2: Fit of responses on condition A. 3 free parameters.  M_A = mean of rate of rise distribution, S_A = std of rate of rise distribution, bias = bias towards rate of rise distribution (using fixed Mp and Sp parameters from previous step)
+            # initialize gaussians
+            norm_pred = stats.norm(loc = Mp/params[0],scale = Sp/params[0])
+            norm_react = stats.norm(loc = Mr,scale = Sr)
+            
+            # joint probability distribution
+            prob = norm_pred.pdf(rrts) + norm_react.pdf(rrts) 
 
-        # initial guess of M0 and S0 (based on correct responses on condition A
-        M0 = np.mean(rrts_A[pred_idx_A==False]) 
-        S0 = np.std(rrts_A[pred_idx_A==False])
-        bias0 = 0.001 # start assuming minimal influence of premature responses
+            # error function to calculate negative log likelhood for this distribution.
+            err_ = -np.sum(np.log(prob))
+        
+            if np.isinf(err_):
+                err_ = 10**6
 
-        # bounds for M and S
-        # contrain M within rate of reciprocal correct responses
-        M_bounds = (1000/slowest_correct_response_ms,1000/fastest_correct_response_ms) 
-        # constrain std so we dont have run-away variance as a description of bi-modal RTs
-        S_bounds = (0.001,0.1)
+            return err_ 
 
-        # constrain bias from 0 to 1
-        bias_bounds = (0.001,1)
-
-        # get M_A, S_A and bias_A based on all responses from condition A. Mp and Sp are fixed parameters from step 1
-        res = optimize.minimize(later_mean_std_bias,x0=(M0,S0,bias0),\
-                            args=(rrts_A,Mp,Sp),method='SLSQP',\
-                            bounds=(M_bounds,S_bounds,bias_bounds))
-        M_A = res.x[0]
-        S_A = res.x[1]
-        bias_A = res.x[2]
-        # Distance A is 1 (as a reference value)
-        D_A = 1
+        def later_race_Dreact(params,rrts,Mp,Sp,Mr,Sr):
+            # models rrts as a race between two rising processes (joint probability distribution of a predictive and reactive process)
+            # params...tuple representing model params
+            # 0 ... distance of reactive rising process
 
 
+            # initialize gaussians
+            norm_pred = stats.norm(loc = Mp,scale = Sp)
+            norm_react = stats.norm(loc = Mr/params[0],scale = Sr/params[0])
+            
+            # joint probability distribution
+            prob = norm_pred.pdf(rrts) + norm_react.pdf(rrts) 
 
-        ### STEP 3: Fit responses on condition B. 3 free parameters.  M_B = mean of rate of rise distribution, bias_B bias towards rate of rise distribution (using fixed Mp and Sp parameters from previous step), and one of the following:
-        # S_B = std of rate of rise 
-        # or 
-        # D_B = distance travelled (scaling factor on mean and std)
+            # error function to calculate negative log likelhood for this distribution.
+            err_ = -np.sum(np.log(prob))
+        
+            if np.isinf(err_):
+                err_ = 10**6
 
-        # initial guess of parameters underlying long delay responses essentially assume a null model
-        M0 =  M_A # start with gaussian fit on short delay trials
-        S0 = S_A # start with gaussian fit on short delay trials
-        D0 = D_A # assume no change in distance
-        bias0 = bias_A# start assuming minimal influence of premature responses
+            return err_ 
 
-        # bounds for M and S
-        # contrain M within rate of reciprocal correct responses
-        M_bounds =(0.001,1) #(1000/slowest_correct_response_ms,1000/fastest_correct_response_ms) 
-
-        # constrain std so we dont have run-away variance as a description of bi-modal RTs
-        S_bounds = (0.001,0.1)
-
-        # constrain distance so we dont divide by 0
-        D_bounds =(.1,10) #(0.001,1000)
-
-        # constrain bias from 0 to 1
-        bias_bounds = (0.001,1)
+        def later_race_Dboth(params,rrts,Mp,Sp,Mr,Sr):
+            # models rrts as a race between two rising processes (joint probability distribution of a predictive and reactive process)
+            # params...tuple representing model params
+            # 0 ... distance of reactive rising process
 
 
-        if model_type == 'mean_bias':
+            # initialize gaussians
+            norm_pred = stats.norm(loc = Mp/params[0],scale = Sp/params[0])
+            norm_react = stats.norm(loc = Mr/params[0],scale = Sr/params[0])
+            
+            # joint probability distribution
+            prob = norm_pred.pdf(rrts) + norm_react.pdf(rrts) 
 
-            # get M_A, S_A and bias_A based on all responses from condition A. S0, Mp and Sp are fixed parameters from step 1
-            res = optimize.minimize(later_mean_bias,x0=(M0,bias0),\
-                               args=(rrts_B,S0,Mp,Sp),method='SLSQP',\
-                               bounds=(M_bounds,bias_bounds))
-            M_B = res.x[0] # mean 
-            bias_B = res.x[1] # bias on condition B
+            # error function to calculate negative log likelhood for this distribution.
+            err_ = -np.sum(np.log(prob))
+        
+            if np.isinf(err_):
+                err_ = 10**6
 
-            S_B = S_A # assume std does not change
-            D_B = D_A # assume distance does not change
-        elif model_type == 'std_bias':
+            return err_ 
 
-            # get M_A, S_A and bias_A based on all responses from condition A. S0, Mp and Sp are fixed parameters from step 1
-            res = optimize.minimize(later_std_bias,x0=(S0,bias0),\
-                               args=(rrts_B,M0,Mp,Sp),method='SLSQP',\
-                               bounds=(S_bounds,bias_bounds))
-            S_B = res.x[0] # std on condition B 
-            bias_B = res.x[1] # bias on condition B
+        def later_race_DpredDreact(params,rrts,Mp,Sp,Mr,Sr):
+            # models rrts as a race between two rising processes (joint probability distribution of a predictive and reactive process)
+            # params...tuple representing model params
+            # 0 ... distance of predictive rising process
+            # 1 ... distance of reactive rising process
 
-            M_B = M_A # assume mean does not change
-            D_B = D_A # assume distance does not change        
-        elif model_type == 'dist_bias':
-            # get M_A, S_A and bias_A based on all responses from condition A. M0, S0, Mp and Sp are fixed parameters from step 1
-            res = optimize.minimize(later_distance_bias,x0=(D0,bias0),\
-                               args=(rrts_B,M0,S0,Mp,Sp),method='SLSQP',\
-                               bounds=(D_bounds,bias_bounds))
 
-            D_B = res.x[0]
-            bias_B = res.x[1]
+            # initialize gaussians
+            norm_pred = stats.norm(loc = Mp/params[0],scale = Sp/params[0])
+            norm_react = stats.norm(loc = Mr/params[1],scale = Sr/params[0])
+            
+            # joint probability distribution
+            prob = norm_pred.pdf(rrts) + norm_react.pdf(rrts) 
 
-            M_B = M_A # assume mean does not change
-            S_B = S_A # assume std does not change
-        elif model_type == 'mean_std_bias':
+            # error function to calculate negative log likelhood for this distribution.
+            err_ = -np.sum(np.log(prob))
+        
+            if np.isinf(err_):
+                err_ = 10**6
+
+            return err_ 
+        def later_race_DpredSreact(params,rrts,Mp,Sp,Mr):
+            # models rrts as a race between two rising processes (joint probability distribution of a predictive and reactive process)
+            # params...tuple representing model params
+            # 0 ... distance of predictive rising process
+            # 1 ... std of reactive rising process
+
+
+            # initialize gaussians
+            norm_pred = stats.norm(loc = Mp/params[0],scale = Sp/params[0])
+            norm_react = stats.norm(loc = Mr,scale = params[1])
+            
+            # joint probability distribution
+            prob = norm_pred.pdf(rrts) + norm_react.pdf(rrts) 
+
+            # error function to calculate negative log likelhood for this distribution.
+            err_ = -np.sum(np.log(prob))
+        
+            if np.isinf(err_):
+                err_ = 10**6
+
+            return err_ 
+        def later_race_MSpredDreact(params,rrts,Mr,Sr):
+            # models rrts as a race between two rising processes (joint probability distribution of a predictive and reactive process)
+            # params...tuple representing model params
+            # 0 ... mean of predictive rising process
+            # 1 ... std of predictive rising process
+            # 2 ... distance of reactive rising process
+
+
+            # initialize gaussians
+            norm_pred = stats.norm(loc = params[0],scale = params[1])
+            norm_react = stats.norm(loc = Mr/params[2],scale = Sr/params[2])
+            
+            # joint probability distribution
+            prob = norm_pred.pdf(rrts) + norm_react.pdf(rrts) 
+
+            # error function to calculate negative log likelhood for this distribution.
+            err_ = -np.sum(np.log(prob))
+        
+            if np.isinf(err_):
+                err_ = 10**6
+
+            return err_ 
+        def later_race_MSpredMSreact(params,rrts):
+            # models rrts as a race between two rising processes (joint probability distribution of a predictive and reactive process)
+            # params...tuple representing model params
+            # 0 ... mean of predictive rising process
+            # 1 ... std of predictive rising process
+            # 2 ... distance of reactive rising process
+
+
+            # initialize gaussians
+            norm_pred = stats.norm(loc = params[0],scale = params[1])
+            norm_react = stats.norm(loc = params[2],scale = params[3])
+            
+            # joint probability distribution
+            prob = norm_pred.pdf(rrts) + norm_react.pdf(rrts) 
+
+            # error function to calculate negative log likelhood for this distribution.
+            err_ = -np.sum(np.log(prob))
+        
+            if np.isinf(err_):
+                err_ = 10**6
+
+            return err_ 
+
+
+        if modeling_strategy == 'DynamicBaseline':
+            """ We model  anticipation as  expectation-related changes in behavior. We experimentally modulate temporal expectation using the variable foreperiod delay task and quantify behavior using response times. The model considers two distinct processes underlying anticipatory behavior:  1) Predicitive responses, which manifest as premature responses that occur from S1 - S2 (including ~250 ms post stim, "premature response threshold"), are modeled as a uniform distribution that is scaled by expectation; 2) Reactive responses, which manifest as response time distribution triggered by S2, which are modeled as a rise-to-bound process, that is also scaled by expectation. The model considers dynamic baseline activity lever between S1 and S2 as a common expectation-related scaling process that governs both behaviors. Expectation raises the baseline level which increases the probability of a pre-stimulus response, and subsequently, reduces the distance needed for a reactive rising process to trigger a response. In this way, the model is parsimonious."""
+
+            # STEP 1) model predictive responses using a uniform 
+            
+            # estimate this by fitting a uniform distribution to all premature responses
+            rpts = np.concatenate((rpts_A,rpts_B))
+            if len(rpts)>5:
+                res = stats.uniform.fit(rpts)
+                uL = res[0] # loc parameter
+                uS = res[1] # scale parameter (end of the uniform distribution, we will use this parameter to fit cumulative probability of a premature response in each delay condition)
+            else:
+                uL = 0.5
+                uS = 0.5
+
+
+
+            # STEP 2) model delay-related differences in premature responses as a scaling of the uniform distribution (uni_size)
+            uS0 = uS
+            uS_bounds = (0.01,10)
+            rrt_range = (0.4,1)
+
+            res = optimize.minimize_scalar(uni_scale_cumProb,
+                                args=(pred_idx_A,uL,rrt_range),method='bounded',\
+                                bounds=uS_bounds)   
+            uS_A = res.x
+
+
+            res = optimize.minimize_scalar(uni_scale_cumProb,
+                                args=(pred_idx_B,uL,rrt_range),method='bounded',\
+                                bounds=uS_bounds)
+            uS_B = res.x
+
+            # observed false alarm rate
+            prRate_obs_A = np.mean(pred_idx_A)
+            prRate_obs_B = np.mean(pred_idx_B)
+
+            # model predicted false alarm rate and baseline probability
+            xvals = np.arange(rrt_range[0],rrt_range[1],0.001)
+            # A
+            uni_A = stats.uniform(loc = uL,scale = uS_A)
+            prRate_exp_A = uni_A.cdf(xvals)[-1]
+            prProb_exp_A = uni_A.pdf(xvals)[-1]
+
+            # B
+            uni_B = stats.uniform(loc = uL,scale = uS_B)
+            prRate_exp_B = uni_B.cdf(xvals)[-1]
+            prProb_exp_B = uni_B.pdf(xvals)[-1]
+
+
+
+            # 3) model reactive responses using a gaussian (later mean_std)
+            res = stats.norm.fit(rrts_A[pred_idx_A==False])
+            M_A = res[0]
+            S_A = res[1]
+            D_A = 1
+
+            # 4) model delay-related differences by scaling the gaussian (distance; alternatives - drift rate) 
+
+            # set bounds for parameter search
+            M_bounds =(0.1,1)#(1000/fastest_correct_response_ms,1000/fastest_premature_response_ms)
+            S_bounds = (0.001,0.1) # avoid run away variance
+            D_bounds = (0.1,1)
+
+            # parse through different model types
+
+
+            if model_type == 'mean':
+                # here we change mean drift rate, but fix other params based on step 3 
+                S_B = S_A
+                D_B = D_A
+             
+                res = optimize.minimize_scalar(later_mean,
+                                    args=(rrts_B[pred_idx_B==False],S_B,D_B),method='bounded',\
+                                    bounds=M_bounds)
+                M_B = res.x # mean 
+  
+            elif model_type == 'std':
+  
+                # here we change std of drift rate, but fix other params based on step 3
+                M_B = M_A
+                D_B = D_A
+    
+                res = optimize.minimize_scalar(later_std,
+                                    args=(rrts_B[pred_idx_B==False],M_B,D_B),method='bounded',\
+                                    bounds=S_bounds)
+
+                S_B = res.x # std 
+
+            elif model_type == 'distance':
+
+                # here we change the distance parameter, but fix all other params
+                M_B = M_A
+                S_B = S_A
+    
+                res = optimize.minimize_scalar(later_distance,
+                                    args=(rrts_B[pred_idx_B==False],M_B,S_B),method='bounded',\
+                                    bounds=D_bounds)
+
+                D_B = res.x # distance 
+
+
+        elif modeling_strategy == 'Weighted':
+            ### STEP 1: Initial fit of rate of rise distribution associated with premature responses (prediction unit responses).2 free parameters. Mp = mean of rate of rise associated with premature responses, Sp = std of rate of ris distribution for premature responses. Assumes that this is the same distribution across both conditions. 
+
+            # estimate this by fitting all premature responses
+            rpts = np.concatenate((rpts_A,rpts_B))
+
+            # initial guess of Mp0 and Sp0 if there are at least 5 premature responses total
+            if len(rpts)>5:
+                Mp0 = np.mean(rpts)
+                Sp0 = np.std(rpts)
+            else:
+                Mp0 = 1000/fastest_correct_response_ms
+                Sp0 = 0.1
+            # bounds for Mp and Sp
+            # contrain Mp within range of reciprocal premature responses
+            #Mp_bounds = (0.4,1)
+            Mp_bounds =(1000/fastest_correct_response_ms,1000/fastest_premature_response_ms)
+            # constrain std so we dont have run-away variance as a description of bi-modal RTs        
+            Sp_bounds = (0.001,0.1)
+
+            # get M0 and Sp0 based on correct responses from condition A
+            res = optimize.minimize(later_mean_std,x0=(Mp0,Sp0),\
+                                args=(rpts),method='SLSQP',\
+                                bounds=(Mp_bounds,Sp_bounds))
+            Mp = res.x[0]
+            Sp = res.x[1]
+
+
+            ### STEP 2: Fit of responses on condition A. 3 free parameters.  M_A = mean of rate of rise distribution, S_A = std of rate of rise distribution, bias = bias towards rate of rise distribution (using fixed Mp and Sp parameters from previous step)
+
+            # initial guess of M0 and S0 (based on correct responses on condition A
+            M0 = np.mean(rrts_A[pred_idx_A==False]) 
+            S0 = np.std(rrts_A[pred_idx_A==False])
+            bias0 = 0.001 # start assuming minimal influence of premature responses
+
+            # bounds for M and S
+            # contrain M within rate of reciprocal correct responses
+            M_bounds = (1000/slowest_correct_response_ms,1000/fastest_correct_response_ms) 
+            # constrain std so we dont have run-away variance as a description of bi-modal RTs
+            S_bounds = (0.001,0.1)
+
+            # constrain bias from 0 to 1
+            bias_bounds = (0.001,1)
 
             # get M_A, S_A and bias_A based on all responses from condition A. Mp and Sp are fixed parameters from step 1
             res = optimize.minimize(later_mean_std_bias,x0=(M0,S0,bias0),\
-                               args=(rrts_B,Mp,Sp),method='SLSQP',\
-                               bounds=(M_bounds,S_bounds,bias_bounds))
-            M_B = res.x[0] # mean 
-            S_B = res.x[1] # std on condition B
-            bias_B = res.x[2] # bias on condition B
+                                args=(rrts_A,Mp,Sp),method='SLSQP',\
+                                bounds=(M_bounds,S_bounds,bias_bounds))
+            M_A = res.x[0]
+            S_A = res.x[1]
+            bias_A = res.x[2]
+            # Distance A is 1 (as a reference value)
+            D_A = 1
 
-            # assume S_A is the same as S_B. This model assumes that stochastic variance is constant between conditions, but that changes in rt variance between conditions is driven by changes in premature bias and distance
-            D_B = 1 # assume distance does not change
 
-        elif model_type == 'mean_dist_bias':
 
-            # get M_A, S_A and bias_A based on all responses from condition A. Mp and Sp are fixed parameters from step 1
-            res = optimize.minimize(later_mean_distance_bias,x0=(M0,D0,bias0),\
-                               args=(rrts_B,S0,Mp,Sp),method='SLSQP',\
-                               bounds=(M_bounds,D_bounds,bias_bounds))
-            M_B = res.x[0] # mean 
-            D_B = res.x[1] # distance on condition B
-            bias_B = res.x[2] # bias on condition B
+            ### STEP 3: Fit responses on condition B. 3 free parameters.  M_B = mean of rate of rise distribution, bias_B bias towards rate of rise distribution (using fixed Mp and Sp parameters from previous step), and one of the following:
+            # S_B = std of rate of rise 
+            # or 
+            # D_B = distance travelled (scaling factor on mean and std)
 
-            # assume S_A is the same as S_B. This model assumes that stochastic variance is constant between conditions, but that changes in rt variance between conditions is driven by changes in premature bias and distance
-            S_B = S_A
-        elif model_type == 'std_dist_bias':
+            # initial guess of parameters underlying long delay responses essentially assume a null model
+            M0 =  M_A # start with gaussian fit on short delay trials
+            S0 = S_A # start with gaussian fit on short delay trials
+            D0 = D_A # assume no change in distance
+            bias0 = bias_A# start assuming minimal influence of premature responses
 
-            # get M_A, S_A and bias_A based on all responses from condition A. Mp and Sp are fixed parameters from step 1
-            res = optimize.minimize(later_std_distance_bias,x0=(S0,D0,bias0),\
-                               args=(rrts_B,M0,Mp,Sp),method='SLSQP',\
-                               bounds=(S_bounds,D_bounds,bias_bounds))
-            S_B = res.x[0] # std 
-            D_B = res.x[1] # distance on condition B
-            bias_B = res.x[2] # bias on condition B
+            # bounds for M and S
+            # contrain M within rate of reciprocal correct responses
+            M_bounds =(0.001,1) #(1000/slowest_correct_response_ms,1000/fastest_correct_response_ms) 
 
-            # assume S_A is the same as S_B. This model assumes that stochastic variance is constant between conditions, but that changes in rt variance between conditions is driven by changes in premature bias and distance
-            M_B = M_A # assume mean does not change
+            # constrain std so we dont have run-away variance as a description of bi-modal RTs
+            S_bounds = (0.001,0.1)
+
+            # constrain distance so we dont divide by 0
+            D_bounds =(.1,10) #(0.001,1000)
+
+            # constrain bias from 0 to 1
+            bias_bounds = (0.001,1)
+
+
+            if model_type == 'mean_bias':
+
+                # get M_A, S_A and bias_A based on all responses from condition A. S0, Mp and Sp are fixed parameters from step 1
+                res = optimize.minimize(later_mean_bias,x0=(M0,bias0),\
+                                   args=(rrts_B,S0,Mp,Sp),method='SLSQP',\
+                                   bounds=(M_bounds,bias_bounds))
+                M_B = res.x[0] # mean 
+                bias_B = res.x[1] # bias on condition B
+
+                S_B = S_A # assume std does not change
+                D_B = D_A # assume distance does not change
+            elif model_type == 'std_bias':
+
+                # get M_A, S_A and bias_A based on all responses from condition A. S0, Mp and Sp are fixed parameters from step 1
+                res = optimize.minimize(later_std_bias,x0=(S0,bias0),\
+                                   args=(rrts_B,M0,Mp,Sp),method='SLSQP',\
+                                   bounds=(S_bounds,bias_bounds))
+                S_B = res.x[0] # std on condition B 
+                bias_B = res.x[1] # bias on condition B
+
+                M_B = M_A # assume mean does not change
+                D_B = D_A # assume distance does not change        
+            elif model_type == 'dist_bias':
+                # get M_A, S_A and bias_A based on all responses from condition A. M0, S0, Mp and Sp are fixed parameters from step 1
+                res = optimize.minimize(later_distance_bias,x0=(D0,bias0),\
+                                   args=(rrts_B,M0,S0,Mp,Sp),method='SLSQP',\
+                                   bounds=(D_bounds,bias_bounds))
+
+                D_B = res.x[0]
+                bias_B = res.x[1]
+
+                M_B = M_A # assume mean does not change
+                S_B = S_A # assume std does not change
+            elif model_type == 'mean_std_bias':
+
+                # get M_A, S_A and bias_A based on all responses from condition A. Mp and Sp are fixed parameters from step 1
+                res = optimize.minimize(later_mean_std_bias,x0=(M0,S0,bias0),\
+                                   args=(rrts_B,Mp,Sp),method='SLSQP',\
+                                   bounds=(M_bounds,S_bounds,bias_bounds))
+                M_B = res.x[0] # mean 
+                S_B = res.x[1] # std on condition B
+                bias_B = res.x[2] # bias on condition B
+
+                # assume S_A is the same as S_B. This model assumes that stochastic variance is constant between conditions, but that changes in rt variance between conditions is driven by changes in premature bias and distance
+                D_B = 1 # assume distance does not change
+
+            elif model_type == 'mean_dist_bias':
+
+                # get M_A, S_A and bias_A based on all responses from condition A. Mp and Sp are fixed parameters from step 1
+                res = optimize.minimize(later_mean_distance_bias,x0=(M0,D0,bias0),\
+                                   args=(rrts_B,S0,Mp,Sp),method='SLSQP',\
+                                   bounds=(M_bounds,D_bounds,bias_bounds))
+                M_B = res.x[0] # mean 
+                D_B = res.x[1] # distance on condition B
+                bias_B = res.x[2] # bias on condition B
+
+                # assume S_A is the same as S_B. This model assumes that stochastic variance is constant between conditions, but that changes in rt variance between conditions is driven by changes in premature bias and distance
+                S_B = S_A
+            elif model_type == 'std_dist_bias':
+
+                # get M_A, S_A and bias_A based on all responses from condition A. Mp and Sp are fixed parameters from step 1
+                res = optimize.minimize(later_std_distance_bias,x0=(S0,D0,bias0),\
+                                   args=(rrts_B,M0,Mp,Sp),method='SLSQP',\
+                                   bounds=(S_bounds,D_bounds,bias_bounds))
+                S_B = res.x[0] # std 
+                D_B = res.x[1] # distance on condition B
+                bias_B = res.x[2] # bias on condition B
+
+                # assume S_A is the same as S_B. This model assumes that stochastic variance is constant between conditions, but that changes in rt variance between conditions is driven by changes in premature bias and distance
+                M_B = M_A # assume mean does not change
 
         # store data in later2_dict dict
         later2_dict = {}
         later2_dict['model_type'] = model_type
+        later2_dict['modeling_strategy'] = modeling_strategy
         later2_dict['rrts_A'] = rrts_A
         later2_dict['rrts_B'] = rrts_B
-        later2_dict['rrts_premature'] = rpts
+        later2_dict['rpts_A'] = rpts_A
+        later2_dict['rpts_B'] = rpts_B
+        later2_dict['rrts_premature'] = np.concatenate((rpts_A,rpts_B))
         later2_dict['pred_idx_A'] = pred_idx_A
         later2_dict['pred_idx_B'] = pred_idx_B
-        later2_dict['Mp'] = Mp
-        later2_dict['Sp'] = Sp
-        later2_dict['M_A'] = M_A
-        later2_dict['S_A'] = S_A
-        later2_dict['D_A'] = D_A
-        later2_dict['bias_A'] = bias_A
-        later2_dict['M_B'] = M_B
-        later2_dict['S_B'] = S_B
-        later2_dict['D_B'] = D_B
-        later2_dict['bias_B'] = bias_B
 
-        # calculate params_diff (only mean, distance and bias are free to change between conditions)
-        later2_dict['paramsDiff_M'] = M_B - M_A
-        later2_dict['paramsDiff_S'] = S_B - S_A
-        later2_dict['paramsDiff_D'] = D_B - D_A
-        later2_dict['paramsDiff_B'] = bias_B - bias_A
+        if modeling_strategy == 'DynamicBaseline':
+            later2_dict['uL'] = uL # uniform distribution - loc parameter
+            later2_dict['uS'] = uS # uniform distribution - scale parameter
+            later2_dict['uS_A'] = uS_A # weighting factor (short delay premature responses)
+            later2_dict['uS_B'] = uS_B #  weighting factor (long delay premature responses)
+            later2_dict['prRate_obs_A'] = prRate_obs_A # observed premature response rate (short delay)
+            later2_dict['prRate_obs_B'] = prRate_obs_B # observed premature response rate (long delay)
+            later2_dict['prRate_exp_A'] = prRate_exp_A # predicted premature response rate (short delay)
+            later2_dict['prRate_exp_B'] = prRate_exp_B # predicted premature response rate (long delay)
+            later2_dict['M_A'] = M_A # mean of gaussian fit to reactive responses (short delay)
+            later2_dict['S_A'] = S_A # std of gaussian fit to reactive responses (short delay) 
+            later2_dict['D_A'] = D_A # distance (Scaling factor; default is 1 as a reference)
+            later2_dict['M_B'] = M_B # mean of gaussian fit to reactive responses (long delay)
+            later2_dict['S_B'] = S_B # std of gaussian fit to reactive responses (long delay) 
+            later2_dict['D_B'] = D_B # distance (Scaling factor; default is 1 as a reference)
+
+            # calculate params_diff ()
+            later2_dict['paramsDiff_uS'] = uS_B - uS_A # difference in (scaling factor of uniform distribution) (sets baseline probability)
+            later2_dict['paramsDiff_P'] = prProb_exp_B-prProb_exp_A # difference in baseline probability of premature response  
+            later2_dict['paramsDiff_M'] = M_B - M_A # difference in reactive mean rate of rise
+            later2_dict['paramsDiff_S'] = S_B - S_A # difference in reactive std rate of rise
+            later2_dict['paramsDiff_D'] = D_B - D_A # difference in reactive distance of rate of rise
+            later2_dict['paramsDiff_PD'] = later2_dict['paramsDiff_P'] + later2_dict['paramsDiff_D'] # combination feature
+
+
+
+        elif modeling_strategy == 'weighted':
+            later2_dict['Mp'] = Mp
+            later2_dict['Sp'] = Sp
+            later2_dict['M_A'] = M_A
+            later2_dict['S_A'] = S_A
+            later2_dict['D_A'] = D_A
+            later2_dict['bias_A'] = bias_A
+            later2_dict['M_B'] = M_B
+            later2_dict['S_B'] = S_B
+            later2_dict['D_B'] = D_B
+            later2_dict['bias_B'] = bias_B
+
+            # calculate params_diff (only mean, distance and bias are free to change between conditions)
+            later2_dict['paramsDiff_M'] = M_B - M_A
+            later2_dict['paramsDiff_S'] = S_B - S_A
+            later2_dict['paramsDiff_D'] = D_B - D_A
+            later2_dict['paramsDiff_B'] = bias_B - bias_A
 
 
         # calculate rsquare for full distribution
-        later2_dict = self.calcLATER2_rsquared(later2_dict,rrt_range = (0.4,1), smoothing_factor = 10)
+        later2_dict = self.calcLATER2_rsquared(later2_dict,rrt_range = (0.4,1), smoothing_factor = r2_smoothing_factor,modeling_strategy=modeling_strategy,plot_it = plot_fit)
 
         # update later2_dict in self
         self.later2_dict = later2_dict
 
         return later2_dict
 
-    def calcLATER2_rsquared(self, later2_dict,rrt_range = (0.4,1), smoothing_factor = 10,plot_it = False,ax = None):
+    def calcLATER2_rsquared(self, later2_dict,rrt_range = (0.4,1), smoothing_factor = 1,plot_it = False,ax = None,modeling_strategy='weighted'):
         # This function applies the full later 2 model that has already been fit and tests predictions vs. the full reciprocal rt distribution
 
         # inputs
@@ -2092,45 +2553,177 @@ class Subject:
 
         # returns
         #later2_dict with updated r-sq values
+        def rrts_dist(rrts,smoothing_factor=1,rrt_range=(0.4,1),do_zscore=False,do_smoothing=False,bins = 100,density = True):
+            # estimate empirical probabilty distribution of an rrt distribution
+            y_true,xvals = np.histogram(rrts,bins=bins,range = rrt_range, density=density)
+            if do_zscore==True:
+                y_true=stats.zscore(y_true)
+            if do_smoothing==True:
+                y_true = ndimage.gaussian_filter1d(y_true,smoothing_factor)
+            xvals=xvals[:-1]
+            return xvals, y_true
 
 
-        # get reciprocal rts for both groups
-        rrts = np.concatenate((later2_dict['rrts_A'],later2_dict['rrts_B']))
-
-        # estimate empirical probabilty distribution function of all rrts
-        y_true,xvals = np.histogram(rrts,bins=1000,range = rrt_range, density=True)
-        y_true = ndimage.gaussian_filter1d(y_true,smoothing_factor)
-        xvals=xvals[:-1]
 
 
-        # create predicted probability distribution based on full model
-        norm_pred = stats.norm(loc = later2_dict['Mp'],scale = later2_dict['Sp'])
-        norm_react_A = stats.norm(loc = later2_dict['M_A']/later2_dict['D_A'],scale = later2_dict['S_A']/later2_dict['D_A'])
-        norm_react_B = stats.norm(loc = later2_dict['M_B']/later2_dict['D_B'],scale = later2_dict['S_B']/later2_dict['D_B'])
+        if modeling_strategy=='DynamicBaseline':
+
+            #get vars
+            rrts_A = later2_dict['rrts_A']
+            rrts_B = later2_dict['rrts_B']
+            rpts_A = later2_dict['rpts_A']
+            rpts_B = later2_dict['rpts_B']
+            pred_idx_A = later2_dict['pred_idx_A']
+            pred_idx_B = later2_dict['pred_idx_B']
 
 
-        # predicted probabilities based on full model. it weights long and short probability distributions based on the relative number of trials in each condition
-        condB_bias = len(later2_dict['rrts_B'])/(len(later2_dict['rrts_A'])+len(later2_dict['rrts_B']))
+            # plot full fit (z-scored probability distributions)
+            if plot_it == True:
+                if ax is None:
+                    f,ax = plt.subplots(2,2,figsize=(5,5))
+                    f.tight_layout()
+                    
+                # panel 1:
+                # plot distribution premature responses for short and long delay trials
+                xvals, y_true = rrts_dist(rpts_A,smoothing_factor=smoothing_factor,rrt_range=rrt_range,do_zscore=False,do_smoothing=False,bins = 100,density=False)
+                ax[0,0].bar(xvals,100*((y_true)/len(pred_idx_A)),width=0.01,color = 'C0',alpha = 0.5)
+                #ax[0,0].hist(rpts_A,bins = 20, range = rrt_range,histtype='stepfilled',alpha = 0.5,color = 'C0',density=False)
 
 
-        y_pred_A = ((1-later2_dict['bias_A'])*norm_react_A.pdf(xvals)) + ((later2_dict['bias_A'])*norm_pred.pdf(xvals))
-        y_pred_B = ((1-later2_dict['bias_B'])*norm_react_A.pdf(xvals)) + ((later2_dict['bias_B'])*norm_pred.pdf(xvals))
-        y_pred_full = ((1-condB_bias)*y_pred_A) + ((condB_bias)*y_pred_B)
+                xvals, y_true = rrts_dist(rpts_B,smoothing_factor=smoothing_factor,rrt_range=rrt_range,do_zscore=False,do_smoothing=False,bins = 100,density=False)
+                ax[0,0].bar(xvals,100*((y_true)/len(pred_idx_B)),width=0.01,color = 'C1',alpha = 0.5)
+                #ax[0,0].hist(rpts_B,bins = 20, range = rrt_range,histtype='stepfilled',alpha = 0.5,color = 'C1',density=False)
 
-        # update later2 dict
-        later2_dict['rsquared'] = r2_score(stats.zscore(y_true),stats.zscore(y_pred_full))
-        later2_dict['rsquared_rrt_range'] = rrt_range        
-        later2_dict['rsquared_smoothing_factor'] = smoothing_factor
 
-        # plot full fit (z-scored probability distributions)
-        if plot_it == True:
-            if ax is None:
-                f = plt.figure()
-                ax = plt.subplot(111)
-            ax.plot(xvals,stats.zscore(y_true),color='k')
-            ax.plot(xvals,stats.zscore(y_pred_full),color='k',alpha=0.5,linewidth=3,linestyle='--')
-            ax.set_title('$R^2 =${x:.2f}, $\Delta$ M = {M:.2f},\n  $\Delta$ D = {D:.2f}, $\Delta$ B = {B:.2f}'.format(x=later2_dict['rsquared'],M=later2_dict['paramsDiff_M'],D=later2_dict['paramsDiff_D'],B=later2_dict['paramsDiff_B']))
-            ax.axis('tight')
+                # plot fitted uniform distribution
+                uni = stats.uniform(loc = later2_dict['uL'], scale = later2_dict['uS_A'])
+                ax[0,0].plot(xvals,uni.pdf(xvals)-np.min(uni.pdf(xvals)),color = 'C0',alpha = 0.5,linestyle='--')
+
+                uni = stats.uniform(loc = later2_dict['uL'], scale = later2_dict['uS_B'])
+                ax[0,0].plot(xvals,uni.pdf(xvals)-np.min(uni.pdf(xvals)),color = 'C1',alpha = 0.5,linestyle='--')
+
+                ax[0,0].set_ylim((0,10))
+
+                # panel 2:
+                # plot premature response rate observed vs. model predicted
+                ax[0,1].plot([0,1],[later2_dict['prRate_obs_A'],later2_dict['prRate_obs_B']],linestyle='',marker='o',markersize = 10,color='0.5',alpha = 0.5)
+                ax[0,1].plot([0,1],[later2_dict['prRate_exp_A'],later2_dict['prRate_exp_B']],linestyle='',marker='x',markersize = 10,color='r',alpha = 0.5)
+                ax[0,1].set_xticks([0,1],labels=['short\ndelay','long\ndelay'])
+                ax[0,1].set_ylabel('Probability \n of premature response',fontsize=10)
+                ax[0,1].set_xlim((-0.5,1.5))
+                ax[0,1].set_ylim((0,1))
+
+                # panel 3: 
+                # plot RTs on short delay trials and fitted gaussian model
+                xvals, y_true = rrts_dist(rrts_A[pred_idx_A==False],smoothing_factor=smoothing_factor,rrt_range=rrt_range,do_smoothing=True,do_zscore=True,bins = 100,density=True)
+                ax[1,0].plot(xvals,y_true-np.min(y_true),color = 'C0')
+
+                # plot fitted uniform distribution
+                norm = stats.norm(loc = later2_dict['M_A']/later2_dict['D_A'], scale = later2_dict['S_A']/later2_dict['D_A'])
+                ax[1,0].plot(xvals,stats.zscore(norm.pdf(xvals))-np.min(stats.zscore(norm.pdf(xvals))),color = 'C0',linestyle='--',alpha = 0.5)
+
+
+                # panel 4: 
+                # plot RTs on long delay trials and fitted gaussian model
+                xvals, y_true = rrts_dist(rrts_B[pred_idx_B==False],smoothing_factor=smoothing_factor,rrt_range=rrt_range,do_smoothing=True,do_zscore=True,bins = 100,density=True)
+                ax[1,1].plot(xvals,y_true-np.min(y_true),color = 'C1')
+
+                # plot fitted uniform distribution
+                norm = stats.norm(loc = later2_dict['M_B']/later2_dict['D_B'], scale = later2_dict['S_B']/later2_dict['D_B'])
+                ax[1,1].plot(xvals,stats.zscore(norm.pdf(xvals))-np.min(stats.zscore(norm.pdf(xvals))),color = 'C1',linestyle='--',alpha = 0.5)
+
+
+            # compute and update later2 dict with rsquared value
+
+            # get distributions
+            # short delay
+            xvals, y_true_A = rrts_dist(rrts_A[pred_idx_A==False],smoothing_factor=smoothing_factor,rrt_range=rrt_range,do_smoothing=True,do_zscore=True,bins = 100,density=True)
+            norm = stats.norm(loc = later2_dict['M_A']/later2_dict['D_A'], scale = later2_dict['S_A']/later2_dict['D_A'])
+            y_pred_A = stats.zscore(norm.pdf(xvals))
+
+            # long delay
+            xvals, y_true_B= rrts_dist(rrts_B[pred_idx_B==False],smoothing_factor=smoothing_factor,rrt_range=rrt_range,do_smoothing=True,do_zscore=True,bins = 100,density=True)
+            norm = stats.norm(loc = later2_dict['M_B']/later2_dict['D_B'], scale = later2_dict['S_B']/later2_dict['D_B'])
+            y_pred_B = stats.zscore(norm.pdf(xvals))
+
+
+
+
+            # include premature response rate for short and long delay trials as well
+            #print(y_true_B)
+            target_values_to_fit = np.concatenate((np.reshape(later2_dict['prRate_obs_A'],-1),np.reshape(later2_dict['prRate_obs_B'],-1),\
+            y_true_A,y_true_B)) 
+            model_predicted_values = np.concatenate((np.reshape(later2_dict['prRate_exp_A'],-1),np.reshape(later2_dict['prRate_exp_B'],-1),y_pred_A,y_pred_B))
+            later2_dict['rsquared'] = r2_score(np.array(target_values_to_fit),np.array(model_predicted_values))
+            later2_dict['rsquared_rrt_range'] = rrt_range        
+            later2_dict['rsquared_smoothing_factor'] = smoothing_factor
+
+
+
+        elif modeling_strategy=='Weighted':
+            # get reciprocal rts for both groups
+            rrts = np.concatenate((later2_dict['rrts_A'],later2_dict['rrts_B']))
+
+            # estimate empirical probabilty distribution function of all rrts
+            y_true,xvals = np.histogram(rrts,bins=100,range = rrt_range, density=True)
+            y_true = ndimage.gaussian_filter1d(y_true,smoothing_factor)
+            xvals=xvals[:-1]
+
+            y_true_A,xvals_A = np.histogram(later2_dict['rrts_A'],bins=100,range = rrt_range, density=True)
+            y_true_A = ndimage.gaussian_filter1d(y_true_A,smoothing_factor)
+            xvals_A=xvals_A[:-1]
+
+
+            y_true_B,xvals_B = np.histogram(later2_dict['rrts_B'],bins=100,range = rrt_range, density=True)
+            y_true_B = ndimage.gaussian_filter1d(y_true_B,smoothing_factor)
+            xvals_B=xvals_B[:-1]
+
+            # quantify the proportion of long delay trials (condition b) contributing to the full RT distribution
+            condB_bias = len(later2_dict['rrts_B'])/(len(later2_dict['rrts_A'])+len(later2_dict['rrts_B']))
+
+            # create predicted probability distribution based on full model
+            norm_pred = stats.norm(loc = later2_dict['Mp'],scale = later2_dict['Sp'])
+            norm_react_A = stats.norm(loc = later2_dict['M_A']/later2_dict['D_A'],scale = later2_dict['S_A']/later2_dict['D_A'])
+            norm_react_B = stats.norm(loc = later2_dict['M_B']/later2_dict['D_B'],scale = later2_dict['S_B']/later2_dict['D_B'])
+
+
+            # predicted probabilities based on full model. it weights long and short probability distributions based on the relative number of trials in each condition (condB_bias defined above)
+            y_pred_A = ((1-later2_dict['bias_A'])*norm_react_A.pdf(xvals)) + ((later2_dict['bias_A'])*norm_pred.pdf(xvals))
+            y_pred_B = ((1-later2_dict['bias_B'])*norm_react_A.pdf(xvals)) + ((later2_dict['bias_B'])*norm_pred.pdf(xvals))
+
+            # full model
+            y_pred_full = ((1-condB_bias)*y_pred_A) + ((condB_bias)*y_pred_B)
+
+            # update later2 dict
+            later2_dict['rsquared'] = r2_score(stats.zscore(y_true),stats.zscore(y_pred_full))
+            later2_dict['rsquared_rrt_range'] = rrt_range        
+            later2_dict['rsquared_smoothing_factor'] = smoothing_factor
+
+            # plot full fit (z-scored probability distributions)
+            if plot_it == True:
+                if ax is None:
+                    f,ax = plt.subplots(1,3,figsize=(10,3))
+
+                # plot short delay
+                ax[0].plot(xvals_A,stats.zscore(y_true_A),color='k')
+                ax[0].plot(xvals_A,stats.zscore(y_pred_A),color='k',alpha=0.5,linewidth=3,linestyle='--')
+                
+                # plot long delay
+                # plot short delay
+                ax[1].plot(xvals_B,stats.zscore(y_true_B),color='k')
+                ax[1].plot(xvals_B,stats.zscore(y_pred_B),color='k',alpha=0.5,linewidth=3,linestyle='--')
+
+                # plot full distribution   
+                ax[2].plot(xvals,stats.zscore(y_true),color='k')
+                ax[2].plot(xvals,stats.zscore(y_pred_full),color='k',alpha=0.5,linewidth=3,linestyle='--')
+
+                if modeling_strategy=='race':
+                    ax[2].set_title('$R^2 =${x:.2f}'.format(x=later2_dict['rsquared']),fontsize=12)
+                elif modeling_strategy == 'weighted':
+                    ax[2].set_title('$R^2 =${x:.2f}, $\Delta$ M = {M:.2f},\n  $\Delta$ D = {D:.2f}, $\Delta$ B = {B:.2f}'.format(x=later2_dict['rsquared'],M=later2_dict['paramsDiff_M'],D=later2_dict['paramsDiff_D'],B=later2_dict['paramsDiff_B']))
+                ax[0].axis('tight')
+                ax[1].axis('tight')
+                ax[2].axis('tight')
         return later2_dict
 
     def plotLATER2_fits(self,ax_list = None,later2_dict = None,figsize=(12,3),fsize_lbl = 12,stim_on_ms = 1500,fastResp_ms = 1750,invert_xaxis=True):
@@ -3488,6 +4081,7 @@ class Electrode(Session):
                 self.unpackTFDict(tfDict)
 
             else:
+
                 # compute data
                 for evType in evType_list:
                     self.calcWavelet(evType=evType,
@@ -3922,7 +4516,9 @@ class Electrode(Session):
       rts_percentile = (stats.rankdata(rts)/len(rts))*100 
 
       # create bins
-      bins = np.arange(0,100,num_bins)
+      bins = np.linspace(0,100,num_bins+1)
+      #bins = np.arange(0,100,num_bins)
+      #print(bins)
 
       # assign each trial to a percentile bin
       # -1 is so that the idx are zero indexed
@@ -4713,7 +5309,7 @@ class Electrode(Session):
             self.makeTimeBins(time_bin_size_ms = time_bin_size_ms)
 
         # need to calculate downsampled power
-        else:
+        else:    
 
             # run init functions if we did not at startup
             if self.do_init==False:
@@ -4928,9 +5524,15 @@ class Electrode(Session):
 
             # loop through bins
             for b in np.arange(0,num_bins):
-              # plot it (so we dont have to loop again)
-              ax.plot(self.pow_xval,binPow_mean[b,:], color = color,alpha = 0.1+(bins[b]/100),label='RT bin'+str(b))
-              #ax.fill_between(self.pow_xval,binPow_mean[b,:]+binPow_sem[b,:],alpha=0.1+(bins[b]/100),color = color)
+                #print(bins[b])
+                alfa=np.min([(0.2+(bins[b]/100)),1])
+                # plot it (so we dont have to loop again)
+                ax.plot(self.pow_xval,binPow_mean[b,:], color = color,alpha = alfa,label='RT bin'+str(b),linewidth=3)
+                #ax.plot(self.pow_xval,binPow_mean[b,:], color = color,alpha = 0.1+(bins[b]/100),label='RT bin'+str(b))
+
+
+              #ax.plot(self.pow_xval,binPow_mean[b,:], color = color,alpha = 0.1+(bins[b]/100),label='RT bin'+str(b))
+              ##ax.fill_between(self.pow_xval,binPow_mean[b,:]+binPow_sem[b,:],alpha=0.1+(bins[b]/100),color = color)
 
         # if x val are in samples, then covert tick labels
         if self.pow_apply_time_bins == False:
@@ -5122,13 +5724,18 @@ class Electrode(Session):
 
 
 
-    def plotPow_3d(self,ax = None,add_cbar = True,
+    def plotPow_3d(self,powmat2d_provided=None,pow3d_freqs=None,pow3d_xval=None, ax = None,add_cbar = True,
                    cbar_loc=[.95, 0.1, 0.03, 0.8],clim=(-2,2),
-                   fsize_lbl=16,fsize_tick=16):
+                   fsize_lbl=16,fsize_tick=16, figsize = (5,5),ret_idx = None,vline_list=[0],colmap = 'coolwarm'):
         # This function plots mean and sem of calculated power
         # (uses cached data from the getPow_3d function, so need to run that first)
+
+        # additional inputs:
+        # powmat_provided...will plot a power mat provided rather than the one that is held in self.This should a 2d matrix Freq x Time (collapse across 3rd dimension prior to input)
+        # ret_idx ... allows you to index specific slices from the pow3d matrix (third dimension)
+        # vline_list ... allows you to specify additional yticks
         if ax==None:
-            fig = figure()
+            fig = figure(figsize=figsize)
             ax = subplot(111)
 
         if self.pow3d_evQuery==None:
@@ -5136,34 +5743,63 @@ class Electrode(Session):
         else:
             lbl = self.pow3d_evQuery
 
+        # powmat
+        if powmat2d_provided is None:
+            if ret_idx is None:
+                powmat = self.pow3d_mean
+            else:
+                powmat = np.nanmean(self.pow3d[:,:,ret_idx],axis=2)
+        else:
+            powmat = powmat2d_provided
+
+        # variables to input
+        if pow3d_freqs is None:
+            pow3d_freqs=self.pow3d_freqs
+        if pow3d_xval is None:
+            pow3d_xval = self.pow3d_xval
+
+
+
         # plot mean pow
-        cdat = ax.matshow(self.pow3d_mean, aspect='auto', cmap='RdBu_r');
+        cdat = ax.matshow(powmat, aspect='auto', cmap = colmap);#cmap='RdBu_r'
         cdat.set_clim(clim)
         ax.invert_yaxis()
         xlabel('Time (ms) from '+self.pow3d_evType, fontsize=fsize_lbl); ylabel('Frequency (Hz)', fontsize=fsize_lbl)
 
         # set yticks and labels
-        yticks(np.arange(0, len(self.pow3d_freqs)), np.round(self.pow3d_freqs), fontsize=fsize_tick)
+        yt = np.arange(0, len(pow3d_freqs),5)
+        yticks(yt, np.round(pow3d_freqs).astype('int')[yt], fontsize=fsize_tick)
 
         # set x ticks and labels
         if self.pow3d_apply_time_bins == False:
-            xticks(linspace(0,np.shape(self.pow3d_mean)[1]-1,5),
-               np.round(linspace(self.samples_to_ms(self.pow3d_xval[0]),
-                                 self.samples_to_ms(self.pow3d_xval[-1]),5)).astype('str'),fontsize=fsize_tick)
+            xticks(linspace(0,np.shape(powmat)[1]-1,5),
+               np.round(linspace(self.samples_to_ms(pow3d_xval[0]),
+                                 self.samples_to_ms(pow3d_xval[-1]),5)).astype('str'),fontsize=fsize_tick)
+
+            labels = ax.get_xticklabels()
+            xtl = np.zeros((len(labels)))
+            for i in arange(0,len(labels)):
+                xtl[i] = float(labels[i].get_text())
+
+
+            for v in vline_list:
+                ax.vlines(x=ax.get_xticks()[np.argmin(np.abs(xtl-v))],
+                          ymin=ax.get_ylim()[0],
+                          ymax=ax.get_ylim()[1],
+                          linestyles='--',alpha=0.5)
+
         else:
-            xticks(linspace(0,np.shape(self.pow3d_mean)[1]-1,5),
-               np.round(linspace(self.pow3d_xval[0],self.pow3d_xval[-1],5)),fontsize=fsize_tick)
+            xticks(linspace(0,np.shape(powmat)[1]-1,5),
+               np.round(linspace(pow3d_xval[0],pow3d_xval[-1],5)),fontsize=fsize_tick)
 
-        # v line
-        labels = ax.get_xticklabels()
-        xtl = np.zeros((len(labels)))
-        for i in arange(0,len(labels)):
-            xtl[i] = float(labels[i].get_text())
 
-        ax.vlines(x=ax.get_xticks()[np.argmin(np.abs(xtl-0))],
-                  ymin=ax.get_ylim()[0],
-                  ymax=ax.get_ylim()[1],
-                  linestyles='--',alpha=0.5)
+            for v in vline_list:
+                ax.vlines(x=np.argmin(np.abs(pow3d_xval-v)),
+                      ymin=ax.get_ylim()[0],
+                      ymax=ax.get_ylim()[1],
+                      linestyles='--',alpha=0.5)
+
+
 
         # Now adding the colorbar
         if add_cbar == True:
@@ -5172,6 +5808,7 @@ class Electrode(Session):
             cb = colorbar(mappable=cdat, cax = cax)
             cb.set_label('z-score power',fontsize=fsize_lbl)
             cb.ax.tick_params(labelsize=fsize_lbl)
+
 
 
     def getERP(self,erp_evType = 'RESPONSE',erp_evQuery = None):
@@ -6159,7 +6796,7 @@ class SubjElectrode(Electrode):
 
 
 
-        #post targ on (-500 ms to targ on)
+        #post targ on (targOn to 500 ms)
         thisIdx_start = targOn_idx
         thisIdx_end = ccS_idx
         post_targOn = np.concatenate((np.nanmean(self.powMat[shortTrials_bool,thisIdx_start:thisIdx_end],axis= 1),np.nanmean(self.powMat[longTrials_bool,thisIdx_start:thisIdx_end],axis= 1)))
@@ -7786,7 +8423,7 @@ class Collection(SubjElectrode):
             # this is a flag for wheter or not to apply filter when loading group data
             # gets set to True when filter is applied
             self.filtE_applyFilt = False
-            self.filtE_lbl = ''
+            self.filtE_lbl = ''   
 
 
             # Initialize subj electrode with the first electrode in the list
@@ -7797,10 +8434,13 @@ class Collection(SubjElectrode):
                                elec2_lbl=self.uElbl_list[0].split('-')[2],
                                paramsDict=paramsDict,do_init=True)
 
+
             # Init function
             self.getBadElectrodes()
             # this will not get filtered (and can be used to get
             self.isBadElectrode_list_master = self.isBadElectrode_list.copy()
+
+
 
 
     # Get badElectrodes_list()
@@ -7853,7 +8493,7 @@ class Collection(SubjElectrode):
                     self.applyFiltE(attr_list=['isBadElectrode_list'])
 
 
-    def getBehXSubj(self,evQuery='error==0&fastResponse==0'):
+    def getBehXSubj(self,evQuery='error==0&fastResponse==0',later_model_type = 'std_bias',later_model_strategy = 'Weighted'):
         # This function will loop through all subjects in self.subjList and computes various behavioral measures. It then creates a dataframe in self "behXSubj_df" that can be queried as needed
 
         subj_list = list(np.unique(self.subj_list))
@@ -7890,7 +8530,20 @@ class Collection(SubjElectrode):
             beh_dict['error_rateL'] = np.sum(choiceEv.eval('RT<0&delay==1500'))/np.sum(choiceEv.eval('delay==1500'))
             beh_dict['error_rateS'] = np.sum(choiceEv.eval('RT<0&delay==500'))/np.sum(choiceEv.eval('delay==500'))
             beh_dict['error_diff'] = beh_dict['error_rateL'] - beh_dict['error_rateS']
+
+            beh_dict['fastresponse_rateL'] = np.sum(choiceEv.eval('fastResponse==1&delay==1500'))/np.sum(choiceEv.eval('delay==1500'))
+            beh_dict['fastresponse_rateS'] = np.sum(choiceEv.eval('fastResponse==1&delay==500'))/np.sum(choiceEv.eval('delay==500'))
+            beh_dict['fastresponse_diff'] = beh_dict['fastresponse_rateL'] - beh_dict['fastresponse_rateS']
+            
             beh_dict['guess_rateL'] = np.sum(choiceEv.eval('RT<-500&delay==1500'))/np.sum(choiceEv.eval('delay==1500'))
+
+            # count number of eligible trials
+            beh_dict['ntrials_s'] = len(rts_s)
+            beh_dict['ntrials_l'] = len(rts_l)
+            beh_dict['ntrials_diff'] = np.abs(len(rts_l) - len(rts_s))
+
+
+
 
 
             # count total number of too fast errors
@@ -7900,7 +8553,9 @@ class Collection(SubjElectrode):
             rts_A,rts_B,pred_idx_A,pred_idx_B = S.getRTs_for_LATER2()
 
             # FIT LATER 2
-            beh_dict.update(S.fitLATER2_byCondition(rts_A,rts_B,pred_idx_A, pred_idx_B,model_type = 'std_bias'))#
+            beh_dict.update(S.fitLATER2_byCondition(rts_A,rts_B,pred_idx_A, pred_idx_B,model_type = later_model_type,\
+            modeling_strategy = later_model_strategy,plot_fit = False,r2_smoothing_factor = 1))#
+
 
             # append
             beh_dict_list.append(beh_dict)
@@ -7910,6 +8565,9 @@ class Collection(SubjElectrode):
 
         # save in self
         self.behXSubj_df = behXSubj_df
+
+        # return
+        return behXSubj_df
 
 
 
@@ -8051,6 +8709,7 @@ class Collection(SubjElectrode):
         self.binPow_500 = powMat_dict['binPow_500']
         self.binPow_1500 = powMat_dict['binPow_1500']
         self.num_bins = num_bins
+        self.bins = np.linspace(0,100,num_bins+1) 
         self.pow_evType=pow_evType
         self.pow_frange_lbl = pow_frange_lbl
         self.pow_evQuery = pow_evQuery
@@ -8112,7 +8771,7 @@ class Collection(SubjElectrode):
                                   sess_idx_list=None,
                                   elec1_lbl=self.uElbl_list_master[e].split('-')[1],
                                   elec2_lbl=self.uElbl_list_master[e].split('-')[2],
-                                  paramsDict=None,do_init=True)
+                                  paramsDict=self.params,do_init=True)
 
                 # get pow 2 d
                 S.getPow_3d(pow_evType=pow_evType,
@@ -8302,6 +8961,266 @@ class Collection(SubjElectrode):
         self.taskstats2d_regress_yvar_lbl = regress_yvar_lbl
         self.taskstats2d_feat_list_beh = feat_list_beh_str
 
+    def doPairwiseStats(self,neu_feat = 'S0c',evQuery_beh = 'error==0&fastResponse==0',connectivity_measure = 'pearson', use_clean=False, overwriteFlag=False):
+        """ This funciton measures across trial pairwise connectivity using 
+        temporally-specific event related features as measured by taskstats.
+        First it measures connectivity for all pairs for a particular subject 
+        and stores to disk for a particular feature. It measures delay-related differences
+        and specifies a particular connection strength and generates an adjacency matrix.
+        This stored object can be filtered ad hoc to compare selected pairs of electrodes, 
+        including across subjects (either cluster or brain region) 
+
+        neu_feat = 'S0c' #['S0f','postCC','postCC_bur','preResponse_bur','preResponse']
+        evQuery_beh = 'error==0&fastResponse==0' # this is the component the query used to filter trials based on behavioral criteria only
+        connectivity_measure = 'mi' # ('mi' = mutual information, 'spearman' = spearman correlation)
+        clean_str = '' # We are not using clean data to avoid introducing any additional sources of variability
+
+        """
+
+        # [x] fix the loop to avoid redundant pairs
+        # [x] incorporate pairwise distances and anatomical labels
+        # [ ] generate adjacency matrices per subject
+        # [ ] output a per electrode dataframe and a per subject dataframe
+
+        # import pairwise_distances to measure distance between electrodes
+        from sklearn.metrics import pairwise_distances
+
+        if connectivity_measure=='mi':
+            from sklearn.feature_selection import mutual_info_regression as MI
+        if use_clean == False:
+            clean_str = ''
+        else:
+            clean_str = '_clean'
+
+        # get anatomical information
+
+        anatDf,roiList = self.getAnatDf(atlas='default')
+        anatDf_yeo,roiList_yeo = self.getAnatDf(atlas='yeo')
+        
+        # subfunction that will populate trials appropriately
+        def populateTrials(ev_df,taskstats_idx,n):
+            # ev_df ... dataframe for subject containing all key behavioral events without filtering neural data)
+            # taskstats_iloc ... ind of this electrode within taskstats as currently filtered
+            # n ... string of neural feature (already includes clean_str as specified in the function call)
+            # initialize containers based on clean behavioral trials
+            x_a = np.zeros((len(ev_df),1))
+            x_a[:] = np.nan   
+
+            if len(ev_df)==(len(self.taskstats2d_df.iloc[taskstats_idx][n])):
+                #this means that there is a match is size, just add the trial-by-trial data into the matrix as is
+                x_a[:,0] = self.taskstats2d_df.iloc[taskstats_idx][n]
+
+            else:
+                # this means that there is a mismatch, select the appropriate trials by matching index 
+
+                # find trials in ev_df (master list) that are not pow_ev_filt (electrode specific list)
+                matching_trials = np.isin(ev_df.index,self.taskstats2d_df.iloc[taskstats_idx]['pow_ev_filt']['index'])# note: for pow_ev_filt we use ['index'] not .index so we can get the indices associated with events before that they were filtered
+                matching_trials_idx = np.where(matching_trials==True)[0]  
+
+                # add electrode trial-by-trial data only into the trials that included in pow_ev_filt represented
+                x_a[matching_trials_idx,0] = self.taskstats2d_df.iloc[taskstats_idx][n]
+
+            return x_a 
+
+        # subfunction to compute connectivity strength between an electrode pair
+        def measure_connection(x_a,x_b,connectivity_measure = 'mi'):
+            """ This function measures connection strength between two time series (x_a and x_b). 
+
+            returns rho which is a measure connection strength"""
+
+            # remove nans
+            rm_bool = (np.isnan(x_a)) | (np.isnan(x_b)) | (np.isinf(x_a)) | (np.isinf(x_b))
+            x_a = x_a[rm_bool==False]
+            x_b = x_b[rm_bool==False]
+
+            if connectivity_measure == 'mi':
+                rho = MI(x_a.reshape(-1,1),x_b.reshape(-1,1))[0]
+                p = np.nan
+            elif connectivity_measure == 'spearmann':
+                rho, p = stats.spearmanr(x_a.reshape(-1,1),x_b.reshape(-1,1))
+            elif connectivity_measure == 'pearson':
+                rho, p = stats.pearsonr(x_a,x_b)
+
+            return rho,p
+
+        def run_a_subject(s,neu_feat,connectivity_measure,clean_str):
+            """ This subfunction runs through all pairwise connections for a subject. It uses input parameters described above"""
+
+            # select subject
+            s_idx = self.subj_list==s
+
+            
+                
+            # loop through electrode pairs in this subject
+            count=-1 
+
+            # list of electrodes in this subject
+            elec_list = np.where(s_idx)[0]
+
+
+
+            #Here we have to deal with variable trial indexing for each electrode. Some electrodes have trials excluded due to noisy electrophysiology unique to that electrode, despite clean behavior. To deal with this, we first obtain a "master list" (superset) of trials for this subject that have clean behavior. 
+            
+            # first we identify all trials for the subject with clean behavior
+            # here we hard code even type as fix_start because these are the event entries that doTaskstats uses  
+            S = Subject(subj=s)
+            ev_df = S.ev_df.query(evQuery_beh+'&type=="FIX_START"')
+
+            # initialize container to hold the connectivity data
+            pair_dict_list = []
+
+            #then we use the populateTrials subfunction defined above to identify trials appropriately and measure connection strength. We do this in the loop below
+
+            # Also, initialize adjacency matrices that we will populate as we go
+            adjmat = np.ones((np.sum(s_idx),np.sum(s_idx)))
+            adjmat[:] = np.nan
+
+            adjmatS = np.copy(adjmat)
+            adjmatL = np.copy(adjmat)
+
+
+            # run the loop
+            count = -1
+
+            for i in range(0,len(elec_list)):
+
+                idx_a = elec_list[i]
+
+                e_a = self.taskstats2d_df.index[idx_a]
+
+                # get feature value
+                x_a = populateTrials(ev_df,idx_a,neu_feat+clean_str)
+
+
+                
+                for j in range(i+1,len(elec_list)):
+
+                    idx_b = elec_list[j]
+
+                    e_b = self.taskstats2d_df.index[idx_b]
+
+                    # get feature value
+                    x_b = populateTrials(ev_df,idx_b,neu_feat+clean_str)
+
+                    # connection_strength
+                    rho, p = measure_connection(x_a,x_b,connectivity_measure = connectivity_measure)
+                    rhoS, pS = measure_connection(x_a[ev_df.eval('delay==500')],x_b[ev_df.eval('delay==500')],connectivity_measure = connectivity_measure)
+                    rhoL, pL = measure_connection(x_a[ev_df.eval('delay==1500')],x_b[ev_df.eval('delay==1500')],connectivity_measure = connectivity_measure)
+
+                    # populate adjacency matrices
+                    adjmat[i,j] = rho
+                    adjmat[j,i] = rho
+
+                    adjmatS[i,j] = rhoS
+                    adjmatS[j,i] = rhoS
+
+                    adjmatL[i,j] = rhoL
+                    adjmatL[j,i] = rhoL                    
+
+
+                    # inititalize container to hold data from this pair
+                    pair_dict = {'pairLbl':e_a+'---'+e_b,'e_a':e_a,'e_b':e_b,'subj':s,'neu_feat':neu_feat,'connectivity_measure':connectivity_measure,'rho':rho,'p':p,'rhoS':rhoS,'pS':pS,'rhoL':rhoL,'pL':pL,'rhoDiff':np.abs(rhoL)-np.abs(rhoS)}
+
+                    #add anatomical information for the pair
+                    # anatomical location of e_a 
+                    pair_dict['roi_a'] = anatDf.iloc[idx_a]['roi']
+                    pair_dict['roi_yeo_a'] = anatDf_yeo.iloc[idx_a]['roi']
+                    pair_dict['mni_x_a'] = anatDf.iloc[idx_a]['mni_x']
+                    pair_dict['mni_y_a'] = anatDf.iloc[idx_a]['mni_y']
+                    pair_dict['mni_z_a'] = anatDf.iloc[idx_a]['mni_z']
+
+                    # anatomical location of e_b
+                    pair_dict['roi_b'] = anatDf.iloc[idx_b]['roi']
+                    pair_dict['roi_yeo_b'] = anatDf_yeo.iloc[idx_b]['roi']
+                    pair_dict['mni_x_b'] = anatDf.iloc[idx_b]['mni_x']
+                    pair_dict['mni_y_b'] = anatDf.iloc[idx_b]['mni_y']
+                    pair_dict['mni_z_b'] = anatDf.iloc[idx_b]['mni_z']
+
+                    # distance measure between mni coordinates
+                    xyz_a = np.array((pair_dict['mni_x_a'],pair_dict['mni_y_a'],pair_dict['mni_z_a'])).reshape(1,-1)
+ 
+                    xyz_b = np.array((pair_dict['mni_x_b'],pair_dict['mni_y_b'],pair_dict['mni_z_b'])).reshape(1,-1)
+                    D = pairwise_distances(xyz_a,xyz_b)
+                    pair_dict['distance_mm'] = D[0][0]
+
+
+
+                    count+=1
+
+                    # append to list
+                    pair_dict_list.append(pair_dict)
+
+            # convert to dataframe
+            pair_df = pd.DataFrame(data=pair_dict_list)
+
+            # generate a dictionary to hold adjancemy matrix data. This can be concatenated across subjects into a list outside this subfunction
+            adjmat_dict = {}
+            adjmat_dict['subj'] = s
+            adjmat_dict['adjmat'] = adjmat
+            adjmat_dict['adjmatS'] = adjmatS
+            adjmat_dict['adjmatL'] = adjmatL
+
+            return pair_df,adjmat_dict
+
+        # container to hold results
+        pair_df = pd.DataFrame()
+        adjmat_list = []
+
+        # loop through subject list
+        for s in np.unique(self.subj_list):
+
+            # run this subject
+            filename = 'PAIRWISE-'+s+'-'+connectivity_measure+'-'+neu_feat+clean_str
+
+            #
+            if (os.path.exists(self.params_dir+filename)==True)&(overwriteFlag==False):
+
+
+
+                #load file if it exists
+                thisSubjPairwiseData = (self.load_pickle(self.params_dir+
+                                                 filename))
+
+                # unpack the list to get the files
+                pair_df_thisSubj = thisSubjPairwiseData[0]
+                adjmat_dict_thisSubj = thisSubjPairwiseData[1]
+
+
+                print('LOADED '+s)
+
+            else:
+                # compute it 
+                pair_df_thisSubj,adjmat_dict_thisSubj = run_a_subject(s,neu_feat,connectivity_measure,clean_str)
+
+                # save these files as a list
+                thisSubjPairwiseData = [pair_df_thisSubj,adjmat_dict_thisSubj]
+
+                self.save_pickle(obj = thisSubjPairwiseData,
+                             fpath = self.params_dir+filename)
+
+            # append to the larger dataframe we are collecting across subjects
+            pair_df = pair_df.append(pair_df_thisSubj)
+
+            # collect adjacency matrices per subject as a dataframe
+            adjmat_list.append(adjmat_dict_thisSubj)
+
+
+            print(s)
+        adjmat_df = pd.DataFrame(adjmat_list)
+        #,index=['HUP179']
+
+
+        return pair_df,adjmat_df
+
+    #def pairwise_filterDf(self,pairDf,query,exclude_flag):
+    """ [ ] Write a function that will filter pairwise DF based on various criteria (eg., brain regions, clusters)"""
+
+
+    #def pairwise_df2adjmat(self,pairDf):
+    """ [ ] Write a function that will generate an adjacency matrix given a list of pairwise connections. Will fill in nan for missing values (generate a warning). Will generate an error if there are multiple subjects in the dataframe """
+
+
+
 
 
 
@@ -8340,18 +9259,32 @@ class Collection(SubjElectrode):
 
         ###### task-related activity #####
         # fix Inc
-        ret_dict['ret_idx_fixInc'] = getRetIdx(self,str_list = ['postFix_tstat>0& postFix_pval<'+pthresh_str])
-        
+        ret_dict['ret_idx_fixInc'] = getRetIdx(self,str_list = ['postFix_tstat>0& postFix_pval<'+pthresh_str])        
         # CC inc
         ret_dict['ret_idx_ccInc'] = getRetIdx(self,str_list = ['postCC_tstat>0& postCC_pval<'+pthresh_str])
 
         # response inc
         ret_dict['ret_idx_respInc'] = getRetIdx(self,str_list = ['postResponse_tstat>0& postResponse_pval<'+pthresh_str])
 
+        # fix Dec
+        ret_dict['ret_idx_fixDec'] = getRetIdx(self,str_list = ['postFix_tstat<0& postFix_pval<'+pthresh_str])        
+        # CC dec
+        ret_dict['ret_idx_ccDec'] = getRetIdx(self,str_list = ['postCC_tstat<0& postCC_pval<'+pthresh_str])
+
+        # response dec
+        ret_dict['ret_idx_respDec'] = getRetIdx(self,str_list = ['postResponse_tstat<0& postResponse_pval<'+pthresh_str])
+
+
+
         # task increase
         ret_dict['ret_idx_taskInc'] = (ret_dict['ret_idx_fixInc'])|(ret_dict['ret_idx_ccInc'])|(ret_dict['ret_idx_respInc'])
 
+        # task null
         ret_dict['ret_idx_taskNull'] = getRetIdx(self,str_list = ['postFix_pval>'+pthresh_str+'& postCC_pval>'+pthresh_str+'& postResponse_pval>'+pthresh_str])
+
+        # task decrease
+        ret_dict['ret_idx_taskDec'] = (ret_dict['ret_idx_fixDec'])|(ret_dict['ret_idx_ccDec'])|(ret_dict['ret_idx_respDec'])
+
 
         # fix greatest
         ret_dict['ret_idx_fixGreatest'] = getRetIdx(self,str_list = ['(postFix_tstat>postCC_tstat)& (postFix_tstat>postResponse_tstat)'])
@@ -8443,7 +9376,7 @@ class Collection(SubjElectrode):
         #ret_dict['ret_idx_m'] = ret_idx_m
         #print('num motor',sum(ret_idx_m))
 
-        #ret_idx_r = (ret_idx_m==False)&getRetIdx(self,str_list = ['postResponse_tstat>0& postResponse_pval<'+pthresh_str,'postResponse_tstat>postFix_tstat','postResponse_tstat>postCC_tstat'])
+        #ret_idx_r = (ret_idx_m==False)&getRetIdx(self,str_list = ['postResponse_tstat>0& postResponse_pval<'+pthresh_str,'postResponse_tstat>postFix_tstat','postResponse_tstat>poclusterElectrodesByTaskStatsstCC_tstat'])
         #ret_dict['ret_idx_r'] = ret_idx_r
         #print('num text/reward',sum(ret_idx_r))
 
@@ -8755,6 +9688,22 @@ class Collection(SubjElectrode):
             self.pow3d_sem = stats.sem(self.pow3d,axis=2,nan_policy='omit')
 
 
+    def collapseArrayBySubj(self,x,subj_list):
+        """This function is a genral purpose function that aggregates values of array by subject. Inputs are the array of values and the subject labels associated with each value. It returns a array of length n unique subjects """
+
+        # create a container
+        x_bySubj = np.zeros(len(np.unique(subj_list)))
+
+        # get list of unique subjects
+        count=-1
+        for s in np.unique(subj_list):
+            count+=1
+            s_idx = subj_list==s
+
+            x_bySubj[count] = np.nanmean(x[s_idx])
+        return x_bySubj
+
+
     def collapseBySubj_1d(self,x, subj_list_ret_idx = None):
         #This function collapses a 1d array within subject (e.g., regress_t_zrrt_St). If x has been masked, then provide subj_list_ret_idx to apply the same mask to self.subj_list
  
@@ -8827,7 +9776,7 @@ class Collection(SubjElectrode):
 
         return master_ret_idx
 
-    def getAnatDf(self,ret_idx=None,cmap='rainbow',atlas='default'):
+    def getAnatDf(self,ret_idx=None,cmap='rainbow',atlas='default',split_insula=False):
         # this function returns a dataframe for selected electrodes indicated by ret_idx (bool) that includes key anatomical data that can be used for anatomical plots
         # cmap assigns colors to each region based on the given colormap
         # atlas .. anatomical atlas to use for labeling and color.
@@ -8890,7 +9839,15 @@ class Collection(SubjElectrode):
                     anat_lbl = self.parse_anat_lbl('White Matter',anat_list_wm[a])
 
                 # convert to roi
-                rois.append(self.anat2roi(anat_lbl))
+
+                rois.append(self.anat2roi(anat_lbl,split_insula=split_insula))
+
+            elif atlas == 'anticipationrois':
+                # Get ROI based on anat_list and anat_list_wm
+                anat_lbl = self.parse_anat_lbl(anat_list[a],anat_list_wm[a])
+                
+                # convert2 roi 
+                rois.append(self.anat2roi_anticipationrois(anat_lbl))               
 
             # append to dict list
             anat_dict_list.append(anat_dict)
@@ -8932,7 +9889,7 @@ class Collection(SubjElectrode):
             r_idx = (np.array(rois) == r)
 
             # [ ] PARSE ATLAS LABEL HERE
-            #BACKHERE
+            
 
             # update colors with a color from color list
             e_colors[r_idx,:] = np.tile(colmap(c_idx[roi_list.index(r)]),(np.sum(r_idx),1))
@@ -9064,7 +10021,7 @@ class Collection(SubjElectrode):
 
     ##### PLOT REGRESS COUNTS
     def plotCorr_counts(self,use_clean = True,ax = None,
-        p_thresh = 0.05,figsize=(5,5),fsize_tick=12,fsize_lbl=16,beh_feat = 'zrrt',neu_feat_list=['S0f','S0c','postCC','postCC_bur','preResponse_bur','preResponse'],yL=None,delay_str='',ret_idx=None,plot_z = False,plot_counts=True):
+        p_thresh = 0.05,figsize=(5,5),fsize_tick=12,fsize_lbl=16,beh_feat = 'zrrt',neu_feat_list=['S0f','S0c','postCC','postCC_bur','preResponse_bur','preResponse'],yL=None,delay_str='',ret_idx=None,plot_z = False,plot_counts=True,plot_prctAboveChance = True):
         # This function plots Counts results from the RT correlation analysis. p_thresh sets threshold for identifying "significant" electrodes
         # inputs:
         # use_clean = True; this flag sets whether to plot residual HFA data that has been "cleaned" of stimulus and response locked components
@@ -9133,9 +10090,18 @@ class Collection(SubjElectrode):
 
             # plot bar showing histogram of counts on ax 1
             if plot_counts == True:
-                ax.bar(i+1,(np.count_nonzero(counts_pos)/len(counts_pos))*100,color='none',
+
+                # collect states 
+                pos_prct = (np.count_nonzero(counts_pos)/len(counts_pos))*100
+                neg_prct = (np.count_nonzero(counts_neg)/len(counts_neg))*100
+
+                if plot_prctAboveChance == True:
+                    pos_prct = np.max((0,(pos_prct - ((p_thresh/2)*100))))
+                    neg_prct = np.max((0,(neg_prct - ((p_thresh/2)*100))))
+
+                ax.bar(i+1,pos_prct,color='0.5',
                 edgecolor='k',label = '(+) effects')
-                ax.bar(i+1,-1*(np.count_nonzero(counts_neg)/len(counts_neg))*100, color='none',
+                ax.bar(i+1,-1*neg_prct, color='0.5',
                 edgecolor='k',label = '(-) effects')
 
 
@@ -9164,8 +10130,12 @@ class Collection(SubjElectrode):
         # clean up xtick
         xtick_lbls = []
         for xv in xvar_lbl:
-            #xtick_lbls.append(xv)#.split('_')[-1]
-            xtick_lbls.append(xvar_lbl.index(xv))
+            if '_' in xv:
+                xv_edit = xv.replace('_','')
+                xtick_lbls.append(xv_edit)
+            else:
+                xtick_lbls.append(xv)#.split('_')[-1]
+            #xtick_lbls.append(xvar_lbl.index(xv))
         plt.xticks(ticks=(np.arange(0,len(xvar_lbl)))+1,
         labels = xtick_lbls,
         rotation=90,
@@ -9201,6 +10171,7 @@ class Collection(SubjElectrode):
         plot_dict['n_obs_pos'] =n_obs_pos
         plot_dict['n_obs_neg'] =n_obs_neg
         plot_dict['neu_feat_list'] =xvar_lbl
+        plot_dict['xtick_lbls'] =xtick_lbls
         
         return plot_dict
     def plotDelayDiff_counts(self,use_clean = True,ax = None,
@@ -9841,7 +10812,7 @@ class Collection(SubjElectrode):
                 ax3.axis('off')
 
  ################ CLUSTERING DATA #####################
-    def clusterElectrodesByTaskStats(self,feat_option = 'selectivity',num_levels_to_cut = 100,binarize_stats=True,p_thresh = 0.05,atlas='default'):
+    def clusterElectrodesByTaskStats(self,feat_option = 'selectivity',num_levels_to_cut = 100,binarize_stats=True,p_thresh = 0.05,atlas='yeo'):
         # This function perfoms heirarchical clustering of gaussian modeled neural response functions. Assumes that taskstats has already been run and is initialized in self
 
         ##### dictionary with various collection of features ####
@@ -9868,6 +10839,56 @@ class Collection(SubjElectrode):
         beh_feat = self.taskstats2d_df['feat_list_beh'][0][0]
         for n in ['S0f','S0c','postCC','postCC_bur','preResponse_bur','preResponse']:
             feat_list_dict['selectivity_rtOnly'].extend(['rtCorr_'+beh_feat+'_'+n+'_clean'+'_zstatnp'])
+
+        feat_list_dict['selectivity_taskAndRt'] = []
+        beh_feat = self.taskstats2d_df['feat_list_beh'][0][0]
+        # RT features
+        for n in ['S0f','S0c','postCC','postCC_bur','preResponse_bur','preResponse']:
+            feat_list_dict['selectivity_taskAndRt'].extend(['rtCorr_'+beh_feat+'_'+n+'_clean'+'_zstatnp'])
+        #task features
+        feat_list_dict['selectivity_taskAndRt'].extend(['postFix_tstat'])
+        feat_list_dict['selectivity_taskAndRt'].extend(['postCC_tstat'])
+        feat_list_dict['selectivity_taskAndRt'].extend(['postResponse_tstat'])
+
+        feat_list_dict['selectivity_taskOnly'] = []
+        beh_feat = self.taskstats2d_df['feat_list_beh'][0][0]
+        #task features
+        feat_list_dict['selectivity_taskOnly'].extend(['postFix_tstat'])
+        feat_list_dict['selectivity_taskOnly'].extend(['postCC_tstat'])
+        feat_list_dict['selectivity_taskOnly'].extend(['postResponse_tstat'])
+
+        feat_list_dict['selectivity_taskAnat'] = []
+        beh_feat = self.taskstats2d_df['feat_list_beh'][0][0]
+        #task features
+        feat_list_dict['selectivity_taskAnat'].extend(['postFix_tstat'])
+        feat_list_dict['selectivity_taskAnat'].extend(['postCC_tstat'])
+        feat_list_dict['selectivity_taskAnat'].extend(['postResponse_tstat'])
+        # add anatomical label as another field
+        feat_list_dict['selectivity_taskAnat'].extend(['roi'])
+
+
+        feat_list_dict['selectivity_taskRtAnat'] = []
+        beh_feat = self.taskstats2d_df['feat_list_beh'][0][0]
+        #task features
+        feat_list_dict['selectivity_taskRtAnat'].extend(['postFix_tstat'])
+        feat_list_dict['selectivity_taskRtAnat'].extend(['postCC_tstat'])
+        feat_list_dict['selectivity_taskRtAnat'].extend(['postResponse_tstat'])
+        # add anatomical label as another field
+        feat_list_dict['selectivity_taskRtAnat'].extend(['roi'])
+        # add rt fields
+        for n in ['S0f','S0c','postCC','postCC_bur','preResponse_bur','preResponse']:
+            feat_list_dict['selectivity_taskRtAnat'].extend(['rtCorr_'+beh_feat+'_'+n+'_clean'+'_zstatnp'])
+
+
+        feat_list_dict['selectivity_taskRt'] = []
+        beh_feat = self.taskstats2d_df['feat_list_beh'][0][0]
+        #task features
+        feat_list_dict['selectivity_taskRt'].extend(['postFix_tstat'])
+        feat_list_dict['selectivity_taskRt'].extend(['postCC_tstat'])
+        feat_list_dict['selectivity_taskRt'].extend(['postResponse_tstat'])
+        # add rt fields
+        for n in ['S0f','S0c','postCC','postCC_bur','preResponse_bur','preResponse']:
+            feat_list_dict['selectivity_taskRt'].extend(['rtCorr_'+beh_feat+'_'+n+'_clean'+'_zstatnp'])
 
         feat_list_dict['selectivity_delayOnly'] = []
         beh_feat = self.taskstats2d_df['feat_list_beh'][0][0]
@@ -10128,7 +11149,7 @@ class Collection(SubjElectrode):
             f = plt.figure(figsize=figsize)
             ax = plt.subplot(111)
 
-        cluster.hierarchy.dendrogram(self.clus_Z, truncate_mode='lastp',p =cut_level,show_leaf_counts =True, ax = ax,color_threshold =0,orientation=orientation)
+        cluster.hierarchy.dendrogram(Z=self.clus_Z,p =cut_level, truncate_mode='lastp',show_leaf_counts =True, ax = ax,color_threshold =0,orientation=orientation)
         if orientation in ['left','right']:
             ax.set_xlabel('Distance (a.u.)')
         else:
@@ -10262,7 +11283,16 @@ class Collection(SubjElectrode):
                 # there is no direction of effect here because its a one way anova, so we count all effects as poistive
                 x = np.ones(np.sum(ret_idx))
                 pvals = self.taskstats2d_df['tlAnova_pval'].to_numpy()[ret_idx]                                
+            elif sel_feat=='motorSel':
+                ret_dict = self.groupElectrodesByTaskStats()
+                #x = ret_dict['ret_idx_respLocked'][ret_idx]
+                x = ret_dict['ret_idx_grp_motor'][ret_idx]
+                pvals = np.zeros(np.sum(ret_idx))
 
+            elif sel_feat=='stimSel':
+                ret_dict = self.groupElectrodesByTaskStats()
+                x = ret_dict['ret_idx_stimLocked'][ret_idx]
+                pvals = np.zeros(np.sum(ret_idx))
             counts_pos = (x>0)&(pvals<=p_thresh)
             counts_neg = (x<0)&(pvals<=p_thresh)
 
@@ -10595,7 +11625,7 @@ class Collection(SubjElectrode):
         #
         return plot_dict
 
-    def evalClusLevel_rtCorrCounts(self,cut_level = 14, ax = None,neu_feat='S0c', use_clean = False, beh_feat = 'zrrt', min_subj_thresh = 5,min_elec_thresh = 50,fsize_tick=12,yL=None,p_thresh=0.05,figsize=(7,5),delay_str = ''):
+    def evalClusLevel_rtCorrCounts(self,cut_level = 14, ax = None,neu_feat='S0c', use_clean = False, beh_feat = 'zrrt', min_subj_thresh = 5,min_elec_thresh = 50,fsize_tick=12,yL=None,p_thresh=0.05,figsize=(7,5),delay_str = '',plot_prctAboveChance = True):
         if ax is None:
             f = plt.figure(figsize=figsize)
             ax = plt.subplot(111)
@@ -10649,22 +11679,43 @@ class Collection(SubjElectrode):
             n_pos.append(np.sum(counts_pos))
             n_neg.append(np.sum(counts_neg))
 
+            # collect states 
+            pos_prct = (np.count_nonzero(counts_pos)/len(counts_pos))*100
+            neg_prct = (np.count_nonzero(counts_neg)/len(counts_neg))*100
+
+            if plot_prctAboveChance == True:
+                pos_prct = np.max((0,(pos_prct - ((p_thresh/2)*100))))
+                neg_prct = np.max((0,(neg_prct - ((p_thresh/2)*100))))
+
+            # bar plot
+            ax.bar(i+1,pos_prct,color='0.5',
+            edgecolor='k',label = '(+) effects')
+            ax.bar(i+1,-1*neg_prct, color='0.5',
+            edgecolor='k',label = '(-) effects')
+
+            """
             ax.bar(len(xtick_lbls),(np.count_nonzero(counts_pos)/len(counts_pos))*100,color='tab:blue',
             edgecolor='k',label = '(+) effects')
             ax.bar(len(xtick_lbls),(np.count_nonzero(counts_neg)/len(counts_pos))*100,
             bottom = (np.count_nonzero(counts_pos)/len(counts_pos))*100, color='tab:orange',
             edgecolor='k',label = '(-) effects')
+            """
 
             if i == 0:
                 plt.legend(fontsize=fsize_tick)
 
         plt.xticks(ticks=(np.arange(0,len(xtick_lbls)))+1,
         labels = xtick_lbls,rotation=90,fontsize=fsize_tick)
-        plt.ylabel('% electrodes')
+        if plot_prctAboveChance==True:
+            plt.ylabel('% electrodes above chance')
+        else:
+            plt.ylabel('% electrodes')
 
         if yL != None:
             ax.set_ylim(yL)
-        plt.hlines(p_thresh*100,ax.get_xlim()[0],ax.get_xlim()[1],linestyle='--',color = 'k',alpha = 0.5)
+
+        if plot_prctAboveChance==False:
+            plt.hlines(p_thresh*100,ax.get_xlim()[0],ax.get_xlim()[1],linestyle='--',color = 'k',alpha = 0.5)
 
 
         plt.title('n electrodes = '+str(len(self.uElbl_list))+' n subj = '+str(len(np.unique(self.subj_list)))+'; '+delay_lbl+'; '+clean_lbl)
@@ -11299,10 +12350,12 @@ class Collection(SubjElectrode):
 
 
     def evalClus_rtCorrCounts(self,use_clean = True,ax = None,
-        p_thresh = 0.05,figsize=(5,5),fsize_tick=12,beh_feat = 'zrrt',yL=None,delay_str='',ret_idx=None):
+        p_thresh = 0.05,figsize=(5,5),fsize_tick=12,beh_feat = 'zrrt',yL=None,delay_str='',ret_idx=None,plot_prctAboveChance = True):
 
-        self.plotCorr_counts(use_clean = use_clean,ax = ax,
-        p_thresh = p_thresh,figsize=figsize,fsize_tick=fsize_tick,beh_feat = beh_feat,yL=yL,delay_str=delay_str,ret_idx=ret_idx)
+        plot_dict = self.plotCorr_counts(use_clean = use_clean,ax = ax,
+        p_thresh = p_thresh,figsize=figsize,fsize_tick=fsize_tick,beh_feat = beh_feat,yL=yL,delay_str=delay_str,ret_idx=ret_idx,plot_prctAboveChance = plot_prctAboveChance)
+
+        return plot_dict
 
     def evalClus_rtCorrCounts_anyTime(self,use_clean = True,ax = None,
         p_thresh = 0.05,figsize=(5,5),fsize_tick=12,fsize_lbl=16,beh_feat = 'zrrt',xvar_lbl=['S0f','S0c','postCC','postCC_bur','preResponse_bur','preResponse'],yL=None,delay_str='',ret_idx=None,plot_z = False,plot_counts=True):
@@ -11476,6 +12529,140 @@ class Collection(SubjElectrode):
 
         self.plotCorr_results(use_clean = use_clean, ax = ax,collapseBySubj_flag = collapseBySubj_flag,figsize=figsize,fsize_tick=fsize_tick,beh_feat = beh_feat,yL = yL,delay_str=delay_str,ret_idx = ret_idx)
 
+    def evalClus_rtPartialCorr(self, use_clean = True,beh_feat='zrrt',ret_idx_a = None,ret_idx_b = None,neu_feat_a = '',neu_feat_b = '',method = 'spearman',evQuery_beh = 'error==0&fastResponse==0',plotFlag=True):
+        """ This function performs a partial correlation analysis testing wether a particular cluster of electrodes (group a) shows a correlation with RT that is independent of another cluster (group b). It specifies a time interval of interest for each cluster. It first identifies a list of subjects that each have at least one observation from each cluster. Then it loops through and performs a partial correlation analysis. It returns a dataframe that stores the results across subjects
+
+        #neu_feat can be one of the following strings: ['S0f','S0c','postCC','postCC_bur','preResponse_bur','preResponse']
+
+        #evQuery_beh -  this is the component  the query used to filter trials based on behavioral criteria only 
+
+        """
+
+        #parse clean flag
+        if use_clean==True:
+            clean_str='_clean'
+        else:
+            clean_str=''
+        
+        # import specific package for partial correlations
+        import pingouin as pg
+
+        # stats container
+        stats_dict_list = []
+
+        # get list of common subjects
+        common_subj = list(set(self.subj_list[ret_idx_a])&set(self.subj_list[ret_idx_b])) 
+
+        # loop through subject list
+        for s in common_subj:
+            print(s)
+            # select subject
+            s_idx = self.subj_list==s
+
+            # Here we have to deal with variable trial indexing for each electrode. Some electrodes have trials excluded due to noisy electrophysiology despite clean behavior. We will deal with this by constructing a matrix that will hold trial by trial data across all electrodes. For electrodes with noisy physiology at certain trials, will store a nan. Identifiying these trials is somewhat tricky. 
+
+
+            # first we identify all trials for the subject with clean behavior
+            # here we hard code even type as fix_start because these are the event entries that doTaskstats uses  
+            S = Subject(subj=s)
+            ev_df = S.ev_df.query(evQuery_beh+'&type=="FIX_START"')
+
+            # initialize containers based on clean behavioral trials
+            x = np.zeros((len(ev_df),1))
+            x[:] = np.nan
+
+            neu_mat_a = np.zeros((len(ev_df),np.sum(ret_idx_a&s_idx)))
+            neu_mat_a[:] = np.nan
+
+            neu_mat_b = np.zeros((len(ev_df),np.sum(ret_idx_b&s_idx)))
+            neu_mat_b[:] = np.nan
+
+            #loop through group a clusters
+
+            # cluster a list
+            a_list = np.where(ret_idx_a&s_idx)[0]
+            count=-1
+            beh_flag = False
+
+            for i in a_list:
+                count+=1
+                if len(ev_df)==(len(self.taskstats2d_df.iloc[i][neu_feat_a])):
+                    #this means that there is a match is size, just add the trial-by-trial data into the matrix as is
+                    neu_mat_a[:,count] = self.taskstats2d_df.iloc[i][neu_feat_a]
+
+                    # also, add behavioral data if we haven't yet
+                    if beh_flag == False:
+                        x = self.taskstats2d_df.iloc[i][beh_feat]
+                        beh_flag = True
+
+                else:
+                    # this means that there is a mismatch, select the appropriate trials by matching index 
+
+                    # find trials in ev_df (master list) that are not pow_ev_filt (electrode specific list)
+                    matching_trials = np.isin(ev_df.index,self.taskstats2d_df.iloc[i]['pow_ev_filt']['index'])# note: for pow_ev_filt we use ['index'] not .index so we can get the indices associated with events before that they were filtered
+                    matching_trials_idx = np.where(matching_trials==True)[0]  
+
+                    # add electrode trial-by-trial data only into the trials that included in pow_ev_filt represented
+                    neu_mat_a[matching_trials_idx,count] = self.taskstats2d_df.iloc[i][neu_feat_a]
+
+            #loop through group b clusters
+
+            # cluster b list
+            b_list = np.where(ret_idx_b&s_idx)[0]
+            count=-1
+
+
+            for i in b_list:
+                count+=1
+                if len(ev_df)==(len(self.taskstats2d_df.iloc[i][neu_feat_b])):
+                    #this means that there is a match is size, just add the trial-by-trial data into the matrix as is
+                    neu_mat_b[:,count] = self.taskstats2d_df.iloc[i][neu_feat_b]
+
+                    # also, add behavioral data if we haven't yet
+                    if beh_flag == False:
+                        x = self.taskstats2d_df.iloc[i][beh_feat]
+                        beh_flag = True
+
+                else:
+                    # this means that there is a mismatch, select the appropriate trials by matching index 
+
+                    # find trials in ev_df (master list) that are not pow_ev_filt (electrode specific list)
+                    matching_trials = np.isin(ev_df.index,self.taskstats2d_df.iloc[i]['pow_ev_filt']['index'])# note: for pow_ev_filt we use ['index'] not .index so we can get the indices associated with events before that they were filtered
+                    matching_trials_idx = np.where(matching_trials==True)[0]  
+
+                    # add electrode trial-by-trial data only into the trials that included in pow_ev_filt represented
+                    neu_mat_b[matching_trials_idx,count] = self.taskstats2d_df.iloc[i][neu_feat_b]
+
+
+            # compute means for neu_mat_a and neu_mat_b
+
+            y_a = np.nanmean(neu_mat_a,axis=1)
+            y_b = np.nanmean(neu_mat_b,axis=1)
+
+            # partial correlation
+            # create a dataframe for this analysis
+            data_df = pd.DataFrame(data={'x':np.array(x).astype('float'),'y_a':np.array(y_a).astype('float'),'y_b':np.array(y_b).astype('float')})
+
+            corrstats = pg.partial_corr(data = data_df, x='x',y ='y_a',covar = 'y_b',method=method)
+
+
+            #print(corrstats)
+
+            # store results in stats_dict and append to list
+            stats_dict = {'r':corrstats['r'].to_numpy()[0],'p':corrstats['p-val'][0],'fisherz':self.r2z(corrstats['r'].to_numpy())[0]}
+
+            stats_dict_list.append(stats_dict)
+
+
+        # export a dataframe]
+        stats_df = pd.DataFrame(data=stats_dict_list,index=common_subj)
+
+        if plotFlag==True:
+            plt.violinplot(stats_df['fisherz'])
+
+        return stats_df
+
+
     def evalClus_fingerprint(self,ax = None,ret_idx = None, neu_feat_list = ['postTargOn','preResponseS_respLocked','postResponseS_respLocked'], anat_list = ['Occipital','Perirolandic-CST','Insula'],sel_feat_list = ['ptCorr_S0f','ptCorr_postTarg','errSel','rewSel','spatialSel'],p_thresh=0.05,use_roiList=True,count_by_hemis = True,count_anyChange=False, plot_option = 'sel',figsize=(5,5),yL=(0,40),atlas='default'):
         
         """ Plot bar plot that describes various features of the cluster in % of all electrodes held in collection. Also plots expected frequency for each feature. Hard codes features (for now)
@@ -11580,7 +12767,21 @@ class Collection(SubjElectrode):
 
             # parse statistic and p-value for various selectivity features
 
-            if sel_feat == 'ptCorr_S0f':
+
+            if sel_feat == 'postFix':
+                x = self.taskstats2d_df['postFix_tstat'].to_numpy()
+                pvals = self.taskstats2d_df['postFix_pval'].to_numpy()
+                thisCol = [0.5,0.5,0.5,1]# 
+            elif sel_feat == 'postCC':
+                x = self.taskstats2d_df['postCC_tstat'].to_numpy()
+                pvals = self.taskstats2d_df['postCC_pval'].to_numpy()
+                thisCol = [0.5,0.5,0.5,1]# 
+            elif sel_feat == 'postResponse':
+                x = self.taskstats2d_df['postResponse_tstat'].to_numpy()
+                pvals = self.taskstats2d_df['postResponse_pval'].to_numpy()
+                thisCol = [0.5,0.5,0.5,1]# 
+
+            elif sel_feat == 'ptCorr_S0f':
                 # pre-stimulus correlation of prediction times (expecation representation/integration)
 
                 # calculate z-statistic
@@ -11615,7 +12816,8 @@ class Collection(SubjElectrode):
                 # there is no direction of effect here because its a one way anova, so we count all effects as poistive
                 x = np.ones(len(ret_idx))
                 pvals = self.taskstats2d_df['tlAnova_pval'].to_numpy()
-                thisCol = [0,0,0.8,1]# blue                                
+                thisCol = [0,0,0.8,1]# blue  
+
             if (count_anyChange == True)|(sel_feat=='spatialSel'):
                 finger_sel_lbls.append(sel_feat)
                 finger_sel_obsInClus.append(np.sum((pvals[ret_idx]<=p_thresh)))
@@ -11965,7 +13167,7 @@ class Collection(SubjElectrode):
 
 
 
-    def evalClus_brainPlot(self,ret_idx=None,c='r',marker_size=10, snap_to_surface = True,plot_on_single_surface=True,view_in_browser=True,save_fullpath='',plot_connectome=False,adj_mat = None,adj_col = (1,0,0,1),adj_linewidth=0.5):
+    def evalClus_brainPlot(self,ret_idx=None,c='r',marker_size=10, snap_to_surface = True,plot_on_single_surface=True,view_in_browser=True,save_fullpath='',plot_connectome=False,adj_mat = None,adj_col=(0,0,1,1),adj_col2 = (1,0,0,1),adj_linewidth=0.5,edge_threshold = 0):
 
         #This function plots electrodes on a brain surface.
         # ret_idx ... sets the subset of electrodes to plot (e.g., can be for a cluster, region or a subject)
@@ -11979,6 +13181,7 @@ class Collection(SubjElectrode):
         # adj_mat = None, Adjacency matrix to use if we are plotting the connectome
         # adj_col.... RGBA tuple used to color connections
         # adj_linewidth ... sets weights of edge connections
+        # edge_threshold ... only plot wights above this threshold
 
 
         from nilearn import plotting,surface,datasets
@@ -12066,9 +13269,9 @@ class Collection(SubjElectrode):
             if plot_connectome==True:# expects adjacency matrix
                 # color the connections based on the color provided(adj_col)
                 from matplotlib.colors import LinearSegmentedColormap 
-                colmap2 = LinearSegmentedColormap.from_list('connect',[(1,1,1,1),adj_col])
+                colmap2 = LinearSegmentedColormap.from_list('connect',[adj_col,adj_col2])
                 # only plot connections with edge weight > 0, linewidth at 0.5
-                view = plotting.view_connectome(adjacency_matrix=adj_mat,node_coords = coords,node_size = marker_size,linewidth=adj_linewidth,edge_threshold=0,edge_cmap=colmap2)
+                view = plotting.view_connectome(adjacency_matrix=adj_mat,node_coords = coords,node_size = marker_size,linewidth=adj_linewidth,edge_threshold=edge_threshold,edge_cmap=colmap2)
             else:
                 view = plotting.view_markers(coords,marker_size = marker_size,marker_color = np.array(c_list))
 
@@ -12100,7 +13303,7 @@ class Collection(SubjElectrode):
                 viewR.save_as_html(save_fullpath+'-R.html')
 
     # plot anatomy
-    def evalClus_anat(self,ax = None,fsize =(7,5),ret_idx = None,title = '',yL=None,plot_raw_counts=False,fsize_tick = 14, fsize_lbl = 16,use_colormap=True,cmap = 'rainbow', plot_by_hemis=False,atlas='default',add_text_labels=True,alpha_hline=0.5):
+    def evalClus_anat(self,ax = None,fsize =(7,5),ret_idx = None,title = '',yL=None,plot_raw_counts=False,fsize_tick = 14, fsize_lbl = 16,use_colormap=True,cmap = 'rainbow', plot_by_hemis=False,atlas='default',add_text_labels=True,alpha_hline=0.5,alpha_hline_width=1,plot_hline=False,exclude_null=False):
         """Function to plot counts or electrode frequencies by region"""    
 
         # parse inputs
@@ -12115,6 +13318,11 @@ class Collection(SubjElectrode):
         
         # get roi, roi_color, and hemisphere
         rois = anatDf['roi'].to_numpy()
+
+        # only include ROIs that have observations
+        if exclude_null==True:
+            roi_list = list(np.unique(rois[ret_idx]))
+
         roi_color = anatDf['roi_color'].to_numpy()
         hemis = anatDf['hemis'].to_numpy()
 
@@ -12143,6 +13351,10 @@ class Collection(SubjElectrode):
         counts_thisClusInReg_R = []
         #print(np.unique(anat_list[ret_idx]))
         binom_zvals= []
+        binom_pvals= []
+        binom_ci = [] 
+        roicolors = np.zeros((len(roi_list),4))
+
 
 
         # loop through regions
@@ -12167,8 +13379,10 @@ class Collection(SubjElectrode):
             # parse colormap
             if use_colormap==True:
                 c = roi_color[np.where(np.array(rois)==r)[0][0]]
+                roicolors[count,:]=c
             else:
                 c = '0.5'
+                roicolors[count,:]=(0.5,0.5,0.5,1)
 
             # plot bar
             width = 0.8
@@ -12231,19 +13445,25 @@ class Collection(SubjElectrode):
             # n = total number of electrodes in this region
             # p = expected frequency based on prevalence of this cluster across the brain
 
-            # we use a one-tailed test (alternative = "less") because we are interested in obtaining z-values that indicate how the observed frequence deviates from expectation (and not the p-values). In this case, positive z-values indicate greater frequency than expected by chance and negative p-values indicate lower frequency than expected size  
+            # we use a one-tailed test (alternative = "less") because we are interested in obtaining z-values that indicate how the observed frequence deviates from expectation (and not the p-values). In this case, positive z-values indicate greater frequency than expected by chance and negative z-values indicate lower frequency than expected size  
 
             # collect z-statistics
             binom = stats.binomtest(k=numThisClusInReg,n=numInReg,p=thisClus_freq,alternative = 'less')
             # convert p to z (we dont have to do 1-p because it is a one tailed p)
-            binom_zvals.append(stats.norm.ppf(binom.pvalue))       
+            binom_zvals.append(stats.norm.ppf(binom.pvalue)) 
 
-   
+            # now do a two tailed test for the stats
+            binom = stats.binomtest(k=numThisClusInReg,n=numInReg,p=thisClus_freq,alternative = 'two-sided')
+            binom_pvals.append(binom.pvalue) # pvalue
+            binom_ci.append(binom.proportion_ci())# confidence interval
 
-        
         # set ticks
         if yL is None:
-            ax.set_ylim((-np.max(np.abs(ax.get_ylim()))),(np.max(np.abs(ax.get_ylim()))))
+            if plot_by_hemis == True:
+                ax.set_ylim((-np.max(np.abs(ax.get_ylim()))),(np.max(np.abs(ax.get_ylim()))))
+            else:
+                ax.set_ylim((0,(np.max(np.abs(ax.get_ylim())))))
+
         else:
             ax.set_ylim(yL)
 
@@ -12262,33 +13482,40 @@ class Collection(SubjElectrode):
             else:
                 ax.set_ylabel('% of electrodes',fontsize=fsize_lbl)
 
-            if plot_by_hemis == True:
-                if alpha_hline is None:
-                    ax.hlines(100*-thisClus_freq_L,ax.get_xlim()[0],ax.get_xlim()[1],linestyle='dashed',alpha = 0.5)
-                    ax.hlines(100*thisClus_freq_R,ax.get_xlim()[0],ax.get_xlim()[1],linestyle='dashed',alpha = 0.5)
+            if plot_hline==True:
+                if plot_by_hemis == True:
+                    if alpha_hline is None:
+                        ax.hlines(100*-thisClus_freq_L,ax.get_xlim()[0],ax.get_xlim()[1],linestyle='dashed',alpha = 0.5,linewidth=alpha_hline_width)
+                        ax.hlines(100*thisClus_freq_R,ax.get_xlim()[0],ax.get_xlim()[1],linestyle='dashed',alpha = 0.5,linewidth=alpha_hline_width)
+                    else:
+                        ax.hlines(100*-alpha_hline,ax.get_xlim()[0],ax.get_xlim()[1],linestyle='dashed',alpha = 0.5,linewidth=alpha_hline_width)
+                        ax.hlines(100*alpha_hline,ax.get_xlim()[0],ax.get_xlim()[1],linestyle='dashed',alpha = 0.5,linewidth=alpha_hline_width)             
+                    ax.set_yticks((ax.get_ylim()[0],100*-thisClus_freq_L,0,100*thisClus_freq_R,ax.get_ylim()[1]))
+                    ax.set_yticklabels(np.abs(ax.get_yticks().astype('int')),fontsize=fsize_tick,rotation=90)
+             
                 else:
-                    ax.hlines(100*-alpha_hline,ax.get_xlim()[0],ax.get_xlim()[1],linestyle='dashed',alpha = 0.5)
-                    ax.hlines(100*alpha_hline,ax.get_xlim()[0],ax.get_xlim()[1],linestyle='dashed',alpha = 0.5)                    
-            else:
-                if alpha_hline is None:
-                    ax.hlines(100*thisClus_freq,ax.get_xlim()[0],ax.get_xlim()[1],linestyle='dashed',alpha = 0.5)
-                else:
-                    ax.hlines(100*alpha_hline,ax.get_xlim()[0],ax.get_xlim()[1],linestyle='dashed',alpha = 0.5)
+                    if alpha_hline is None:
+                        ax.hlines(100*thisClus_freq,ax.get_xlim()[0],ax.get_xlim()[1],linestyle='dashed',alpha = 0.5,color='k',linewidth=alpha_hline_width)
+                    else:
+                        ax.hlines(100*alpha_hline,ax.get_xlim()[0],ax.get_xlim()[1],linestyle='dashed',alpha = 0.5,color='k',linewidth=alpha_hline_width)
+                    ax.set_yticks((ax.get_ylim()[0],ax.get_ylim()[1]))
+                    ax.set_yticklabels(np.abs(ax.get_yticks().astype('int')),fontsize=fsize_tick,rotation=90)
 
         # print chi2 stats
+        if exclude_null==False:
 
-        ax.set_yticks((ax.get_ylim()[0],100*-thisClus_freq_L,0,100*thisClus_freq_R,ax.get_ylim()[1]))
-        ax.set_yticklabels(np.abs(ax.get_yticks().astype('int')),fontsize=fsize_tick,rotation=90)
-        
-        if plot_by_hemis == True:
-            # compute chi sq with each region as an idependent observation
+            if plot_by_hemis == True:
+                # compute chi sq with each region as an idependent observation
 
-
-            chisq,p = stats.chisquare(f_obs=counts_thisClusInReg_L+counts_thisClusInReg_R, \
-                                  f_exp=list(np.array(counts_numInReg_L)*thisClus_freq_L)+list(np.array(counts_numInReg_R)*thisClus_freq_R))
+                chisq,p = stats.chisquare(f_obs=counts_thisClusInReg_L+counts_thisClusInReg_R, \
+                                      f_exp=list(np.array(counts_numInReg_L)*thisClus_freq_L)+list(np.array(counts_numInReg_R)*thisClus_freq_R))
+            else:
+                
+                chisq,p = stats.chisquare(f_obs=counts_thisClusInReg, \
+                                      f_exp=np.array(counts_numInReg)*thisClus_freq)
         else:
-            chisq,p = stats.chisquare(f_obs=counts_thisClusInReg, \
-                                  f_exp=np.array(counts_numInReg)*thisClus_freq)
+            chisq = np.nan
+            p = np.nan
 
 
         #print title with chi sq stats
@@ -12304,11 +13531,14 @@ class Collection(SubjElectrode):
         plot_dict['prct_exp'] = thisClus_freq
         plot_dict['prct_deviation_from_expected'] = list(np.array(plot_dict['prct_obs'])-thisClus_freq)
         plot_dict['binom_zvals'] = binom_zvals
+        plot_dict['binom_pvals'] = binom_pvals
+        plot_dict['binom_ci'] = binom_ci
         plot_dict['counts_numInReg_L'] = counts_numInReg_L
         plot_dict['counts_numInReg_R'] = counts_numInReg_R
         plot_dict['counts_thisClusInReg_L'] = counts_thisClusInReg_L
         plot_dict['counts_thisClusInReg_R'] = counts_thisClusInReg_R
         plot_dict['roi_list'] = roi_list
+        plot_dict['roicolors'] = roicolors
 
 
         return plot_dict
@@ -12316,13 +13546,14 @@ class Collection(SubjElectrode):
         
     
     # plot RT by pow
-    def evalClus_powByRT2d(self, ret_idx = None,lbl=None, ax = None,add_vline=True,fsize_lbl=16,fsize_tick=16,fsize_title=10,fsize_leg = 10,yL=None,xL_ms=None,figsize = (8,4),add_legend=True,add_title = True,collapseBySubj_flag=False,binByRT = False,color = None,alpha = 0.75,delays_list = [500,1500]):
+    def evalClus_powByRT2d(self, ret_idx = None,lbl=None, ax = None,add_vline=True,fsize_lbl=16,fsize_tick=16,fsize_title=10,fsize_leg = 10,yL=None,xL_ms=None,figsize = (8,4),add_legend=True,add_title = True,collapseBySubj_flag=False,binByRT = False,color = None,alpha = 0.75,delays_list = [500,1500],linewidth = None,zero_vline_only=False):
         # This function plots mean power in various RT bins within each delay condition. It overwrites the function in Electrode class (uses cached data from the getPow_2d function, so need to run that first)
     
         # create axes  
         if ax == None:
             fig = plt.figure(figsize=figsize)
             ax = plt.subplot(111)
+
 
         # indicator for whether color is None (color gets overwritten later)
         color_init = color
@@ -12337,6 +13568,8 @@ class Collection(SubjElectrode):
             else:
                 lbl = self.pow_evQuery
 
+
+
         # parse xlim 
         if xL_ms == None:
             if self.pow_apply_time_bins == False:
@@ -12348,6 +13581,12 @@ class Collection(SubjElectrode):
         # loop through delays
         for d in delays_list:
 
+            # select alpha (if it is a list)
+            if type(alpha) is list:
+                this_alpha = alpha[delays_list.index(d)]
+            else:
+                this_alpha = alpha
+
             # set the color for the delay condition
             if d == 500:
                 if color_init is None:
@@ -12356,11 +13595,14 @@ class Collection(SubjElectrode):
                 if color_init is None:
                     color = 'C1'
 
+            
+
             # parse bin by RT
             if binByRT == True:
                 # loop through bins
                 for b in np.arange(0,self.num_bins):
                     binPowMat = getattr(self,'binPow_'+str(d))[b,:,:].T
+                    alfa=np.min([(0.2+(self.bins[b]/100)),1])
 
                     # parse collapse by subj
                     if collapseBySubj_flag == True:
@@ -12371,7 +13613,7 @@ class Collection(SubjElectrode):
                     binPowMat_mean = np.nanmean(binPowMat,axis=0)
                     binPowMat_sem = stats.sem(binPowMat,axis=0,nan_policy='omit')
                     # plot it
-                    ax.plot(self.pow_xval,np.nanmean(binPowMat,axis=0), color = color,alpha = 0.1+(b/10))
+                    ax.plot(self.pow_xval,np.nanmean(binPowMat,axis=0), color = color,alpha = alfa)
                     ax.fill_between(self.pow_xval,binPowMat_mean+binPowMat_sem,binPowMat_mean-binPowMat_sem,alpha=0.1,color = '0.8')
             else:
                 # collapse across rt bins for each delay condition
@@ -12386,8 +13628,8 @@ class Collection(SubjElectrode):
                 binPowMat_mean = np.nanmean(binPowMat,axis=0)
                 binPowMat_sem = stats.sem(binPowMat,axis=0,nan_policy='omit')
                 # plot it
-                ax.plot(self.pow_xval,np.nanmean(binPowMat,axis=0), color = color,alpha = alpha)
-                ax.fill_between(self.pow_xval,binPowMat_mean+binPowMat_sem,binPowMat_mean-binPowMat_sem,alpha=alpha-0.25,color = color)
+                ax.plot(self.pow_xval,np.nanmean(binPowMat,axis=0), color = color,alpha = this_alpha)
+                ax.fill_between(self.pow_xval,binPowMat_mean+binPowMat_sem,binPowMat_mean-binPowMat_sem,alpha=this_alpha-0.25,color = color)
 
         # if x val are in samples, then covert tick labels
         if self.pow_apply_time_bins == False:
@@ -12436,10 +13678,14 @@ class Collection(SubjElectrode):
                     vL_ticks = [0]
 
             else:
+                vL_ticks= [0]
                 if self.pow_evType=='FIX_START':
-                    vL_ticks= [0,500,1500]
-                else:
-                    vL_ticks= [0]
+
+                    if zero_vline_only==False:
+                        if 500 in delays_list:
+                            vL_ticks.extend([500])
+                        if 1500 in delays_list:
+                            vL_ticks.extend([1500])                    
 
             for v in vL_ticks:
                 ax.vlines(x=v,
@@ -12453,7 +13699,8 @@ class Collection(SubjElectrode):
                 plt.legend((lines[0],lines[9],lines[10],lines[19]),
                                ('short delay/fast RT','short delay/slow RT','long delay/fast RT','long delay/slow RT'),fontsize=fsize_leg)
             else:
-                plt.legend((lines[0],lines[-1]),('short delay','long delay'),fontsize=fsize_leg)
+                if len(delays_list)>0:
+                    plt.legend((lines[0],lines[-1]),('short delay','long delay'),fontsize=fsize_leg)
 
         #title
         if add_title == True:
@@ -12462,12 +13709,20 @@ class Collection(SubjElectrode):
         # fig layout
         plt.tight_layout()
     ############ wrapper around subjCollection objecr ####
-    def getSubjCollectionDf(self,filter_bool,filter_bool_lbl, min_obs_thresh = 5,evQuery='error==0&fastResponse==0',overwriteFlag=False,popStats_iters = 1000,doStats_by_groups = False):
+    def getSubjCollectionDf(self,filter_bool,filter_bool_lbl, min_obs_thresh = 5,evQuery='error==0&fastResponse==0',overwriteFlag=False,popStats_iters = 1,doStats_by_groups = False,use_clean = False):
         #this function loops through subjects and collects behavioral and population-level neural statistics. Assumes that Collection has not been filtered
+
+        # parse use_clean 
+        # This is an unusual way to do it, but allows us to not have to rerun prior saved files
+        if use_clean == True:
+            clean_str = ''
+        else:
+            clean_str = '-UNCLEAN'
+
 
 
         # Load and return if we already have saved this file
-        sc_df_fname = 'SC-DF-'+filter_bool_lbl+'-popStats_iters-'+str(popStats_iters)
+        sc_df_fname = 'SC-DF-'+filter_bool_lbl+'-popStats_iters-'+str(popStats_iters)+clean_str
 
         if (os.path.exists(self.params_dir+sc_df_fname)==True)&(overwriteFlag==False):
             
@@ -12533,19 +13788,27 @@ class Collection(SubjElectrode):
             sc_dict['guess_rateL'] = np.sum(choiceEv.eval('RT<-500&delay==1500'))/np.sum(choiceEv.eval('delay==1500'))
 
             # fit LATER 2
-            rts_A,rts_B,pred_idx_A,pred_idx_B = S.getRTs_for_LATER2()
+            #rts_A,rts_B,pred_idx_A,pred_idx_B = S.getRTs_for_LATER2()
 
             # FIT LATER 2
-            sc_dict.update(S.fitLATER2_byCondition(rts_A,rts_B,pred_idx_A, pred_idx_B,model_type = 'std_bias'))
+            #sc_dict.update(S.fitLATER2_byCondition(rts_A,rts_B,pred_idx_A, pred_idx_B,model_type = 'std_bias'))
 
 
             # get pop response
             sc.getPopulationResponse(pow_frange_lbl='HFA',pow_method='wave',pow_evQuery=evQuery, do_zscore=True,        apply_gauss_smoothing=True, gauss_sd_scaling=0.075,
                 num_iters=1, apply_time_bins=False, time_bin_size_ms=100,overwriteFlag=False,feat_list_beh = ['zrrt'],
-                run_light=True,popStats_iters=popStats_iters)
+                run_light=True,popStats_iters=popStats_iters,use_clean=use_clean)
 
             # update with popStats_dict
             sc_dict.update(sc.popStats_dict)
+
+
+            # get null response. This helps us understand the relation between measurement interval and SR_trajParams
+            sc.getNullResponse()
+
+            # update with nullStats
+            sc_dict.update(sc.nullResponse_dict)
+
 
 
             # manually compute fraction of electrodes that showed HFA changes after 500 ms on long delay trials
@@ -12557,6 +13820,10 @@ class Collection(SubjElectrode):
             sc_dict['numDimensions'] = np.nonzero(np.cumsum(sc.pca_mod.explained_variance_ratio_)>.95)[0][0]
 
             if doStats_by_groups == True:
+
+                print('Warning: This function has has been depreciated.')
+                """
+                Depreciated. Focus on dimensionality of across subjects effects
 
                 # # get key memreg features
                 # memReg_key_list = ['delayCondIsLong_tstat','errorMemFast_tstat','shortDelayMem_tstat','tau']
@@ -12610,6 +13877,8 @@ class Collection(SubjElectrode):
                 popStats_byClus_dict =sc.pop_doStats_by_clusLevel(clus_ret_mat=clus_ret_mat_thisSubj,beh_var_lbl ='zrrt',min_elec_thresh = 5,neu_var_list=['SR_dist','SR_speed','SR_headingCorrect'],stat_option='corrPartial',covar_list=[['SR_speed','SR_headingCorrect'],['SR_dist'],['SR_dist']],do_cumulative=True,do_reverse=True)
                 # #update sc_dict with pop stats by cluster 
                 sc_dict.update(popStats_byClus_dict)
+
+                """
 
             # #append dict to list
             sc_dict_list.append(sc_dict)
@@ -13013,7 +14282,7 @@ class SubjCollection(Collection):
         # create bool to filter this subjects data
         self.thisSubjFilt_bool = np.copy(self.filter_bool[(self.subj_bool)&(self.isBadElectrode_bool==False)])
 
-        # can use this to decide whether we have enough subjects for a full analysis
+        # can use this to decide whether we have enough electrodes for a full analysis
         self.n_obs = np.sum(self.thisSubjFilt_bool)
 
     ####### POPULATION ANALYSES #######
@@ -13025,13 +14294,20 @@ class SubjCollection(Collection):
         gauss_sd_scaling=0.075,
         apply_time_bins=False,num_iters=1,
         time_bin_size_ms=100,
-        overwriteFlag=False,feat_list_beh = None,run_light = True,popStats_iters = 1000):
+        overwriteFlag=False,feat_list_beh = None,run_light = True,popStats_iters = 1,use_clean = False):
 
 
         if feat_list_beh is None:
             feat_list_beh_str = ''
         else:
             feat_list_beh_str = str(feat_list_beh)
+
+
+        # This is an unusual way to do it, but allows us to not have to rerun prior saved files
+        if use_clean == False:
+            clean_str = '-UNCLEAN'
+        else:
+            clean_str = ''
 
 
         # hold input params in self
@@ -13043,7 +14319,9 @@ class SubjCollection(Collection):
         self.pop_apply_gauss_smoothing=apply_gauss_smoothing
         self.pop_gauss_sd_scaling=gauss_sd_scaling
         self.pop_apply_time_bins=apply_time_bins
+        self.pop_time_bin_size_ms=time_bin_size_ms
         self.pop_num_iters=num_iters
+        self.pop_feat_list_beh_str = feat_list_beh_str
 
         # check if we have saved a pop response
         self.popResponse_fname = (('popResponse-'
@@ -13056,8 +14334,9 @@ class SubjCollection(Collection):
                                    +str(apply_gauss_smoothing)
                                    +str(gauss_sd_scaling)
                                    +str(apply_time_bins)
-                                   +str(time_bin_size_ms)+'num_iters'+str(num_iters)+feat_list_beh_str))
-
+                                   +str(time_bin_size_ms)+'num_iters'+str(num_iters)+feat_list_beh_str\
+                                   +clean_str))
+        
 
         # look for saved file
         if (os.path.exists(self.params_dir+self.popResponse_fname)==True)&(overwriteFlag==False):
@@ -13089,30 +14368,79 @@ class SubjCollection(Collection):
                 #else
                 count +=1
 
+                ### IF/Then to parse "use_clean" option. If this is False, we compute population activity based on power, otherwise, if it is true, we use power time series that have been cleaned of stimulus/response events. 
+                if use_clean==False:
+                    
+                    ###POW BLOCK STARTS
+                    # load power data (Locked to Color Change/S1)
+                    SE.getPow_2d(pow_evType='CC',pow_frange_lbl = self.pop_pow_frange_lbl,
+                           pow_method = self.pop_pow_method,
+                           pow_evQuery = self.pop_pow_evQuery,
+                           do_zscore = self.pop_do_zscore,
+                           apply_gauss_smoothing = self.pop_apply_gauss_smoothing,
+                           gauss_sd_scaling = self.pop_gauss_sd_scaling,
+                           apply_time_bins=self.pop_apply_time_bins,
+                           time_bin_size_ms=self.pop_time_bin_size_ms)
 
-                # load taskstats (to initialize parameters)
-                SE.doTaskStats_2d(pow_frange_lbl=pow_frange_lbl,pow_method=pow_method,pow_evQuery=pow_evQuery, do_zscore=do_zscore,    apply_gauss_smoothing=apply_gauss_smoothing,gauss_sd_scaling=gauss_sd_scaling,apply_time_bins=apply_time_bins,time_bin_size_ms=time_bin_size_ms,overwriteFlag=overwriteFlag,feat_list_beh=feat_list_beh,num_iters=num_iters)
+                    # identify time range 
+                    # Start the segment at Stimulus onset
+                    segStart_idx = np.argmin(np.absolute(SE.pow_xval-0)) 
 
-                # re run model time course function to get trial by trial data
-                if hasattr(SE,'responseModel_dict') == False:
-                    SE.taskstats_modelTimeCourseAndGetResponseFeatures()
+                    # End the segment 1000 ms following stimulus onset 
+                    if self.pop_apply_time_bins == True:
+                        segEnd_idx = np.argmin(np.absolute(SE.pow_xval-1000))
+                    else:     
+                        segEnd_idx = np.argmin(np.absolute(SE.pow_xval-SE.ms_to_samples(1000)))
 
-                # populate response matrix based on response model dict
-                if count == 1:
-                    popMatS = SE.responseModel_dict['responseS_trials_clean_ccLocked_postCC'][:,:,np.newaxis]
-                    popMatL = SE.responseModel_dict['responseL_trials_clean_ccLocked_postCC'][:,:,np.newaxis]
-                    rtS = SE.taskstats2d['rt'][SE.taskstats2d['shortTrials_bool']]
-                    rtL = SE.taskstats2d['rt'][SE.taskstats2d['longTrials_bool']]
 
-                    #
-                    se_samplerate = SE.taskstats2d['samplerate']
-                    se_pow_ev_filt = SE.taskstats2d['pow_ev_filt']
+                    # populate response matrix based on response model dict 
+                    pow_vec = SE.powMat[:,segStart_idx:segEnd_idx,np.newaxis]
 
-                else:
-                    popMatS = np.concatenate((popMatS,SE.responseModel_dict['responseS_trials_clean_ccLocked_postCC'][:,:,np.newaxis]),axis=2)
-                    popMatL = np.concatenate((popMatL,SE.responseModel_dict['responseL_trials_clean_ccLocked_postCC'][:,:,np.newaxis]),axis=2)
+                    ### long and short delay trials 
+                    shortTrials_bool = SE.pow_ev_filt.eval('delay==500').to_numpy()
+                    longTrials_bool = SE.pow_ev_filt.eval('delay==1500').to_numpy()
 
-                    print(count,'/',len(self.uElbl_list))
+                    if count == 1:
+                        popMatS = pow_vec[shortTrials_bool,:,:]
+                        popMatL = pow_vec[longTrials_bool,:,:]
+                        rtS = SE.pow_ev_filt['RT'].to_numpy()[shortTrials_bool]
+                        rtL = SE.pow_ev_filt['RT'].to_numpy()[longTrials_bool]
+                        se_samplerate = SE.samplerate
+                        se_pow_ev_filt = SE.pow_ev_filt
+                    else:
+                        popMatS = np.concatenate((popMatS,pow_vec[shortTrials_bool,:,:]),axis=2)
+                        popMatL = np.concatenate((popMatL,pow_vec[longTrials_bool,:,:]),axis=2)
+                        print(count,'/',len(self.uElbl_list))
+
+                    ###POW BLOCK ENDS HERE
+
+
+                elif use_clean == True:
+                    ###TASKSTATS BLOCK STARTS
+                    # load taskstats (to initialize parameters)
+                    SE.doTaskStats_2d(pow_frange_lbl=pow_frange_lbl,pow_method=pow_method,pow_evQuery=pow_evQuery, do_zscore=do_zscore,    apply_gauss_smoothing=apply_gauss_smoothing,gauss_sd_scaling=gauss_sd_scaling,apply_time_bins=apply_time_bins,time_bin_size_ms=time_bin_size_ms,overwriteFlag=overwriteFlag,feat_list_beh=feat_list_beh,num_iters=num_iters)
+
+                    # re run model time course function to get trial by trial data
+                    if hasattr(SE,'responseModel_dict') == False:
+                        SE.taskstats_modelTimeCourseAndGetResponseFeatures()
+
+                    # populate response matrix based on response model dict
+                    if count == 1:
+                        popMatS = SE.responseModel_dict['responseS_trials_clean_ccLocked_postCC'][:,:,np.newaxis]
+                        popMatL = SE.responseModel_dict['responseL_trials_clean_ccLocked_postCC'][:,:,np.newaxis]
+                        rtS = SE.taskstats2d['rt'][SE.taskstats2d['shortTrials_bool']]
+                        rtL = SE.taskstats2d['rt'][SE.taskstats2d['longTrials_bool']]
+
+                        #
+                        se_samplerate = SE.taskstats2d['samplerate']
+                        se_pow_ev_filt = SE.taskstats2d['pow_ev_filt']
+
+                    else:
+                        popMatS = np.concatenate((popMatS,SE.responseModel_dict['responseS_trials_clean_ccLocked_postCC'][:,:,np.newaxis]),axis=2)
+                        popMatL = np.concatenate((popMatL,SE.responseModel_dict['responseL_trials_clean_ccLocked_postCC'][:,:,np.newaxis]),axis=2)
+
+                        print(count,'/',len(self.uElbl_list))
+                        ###TASKSTATS BLOCK ENDS
 
             # init dict
             self.popResponse_dict = {}
@@ -13169,6 +14497,127 @@ class SubjCollection(Collection):
 
         #  do Stats here
         self.pop_doStats(n_iters = popStats_iters)
+
+    def getNullResponse(self,overwriteFlag=False):
+        """ This function assesses the relation between measurement interval (correlates with RT) and various trajParams. These data can be used to correct for delay-related differences in SR_trajParams that would be expected based on a varying measurement interval"""
+        
+
+
+        # check if we have saved a pop response
+        self.nullResponse_fname = (('nullResponse-'
+                                  +self.subj
+                                  +'-'
+                                   +self.pop_pow_frange_lbl
+                                   +self.pop_pow_method
+                                   +self.pop_pow_evQuery
+                                   +str(self.pop_do_zscore)
+                                   +str(self.pop_apply_gauss_smoothing)
+                                   +str(self.pop_gauss_sd_scaling)
+                                   +str(self.pop_apply_time_bins)
+                                   +str(self.pop_time_bin_size_ms)+'num_iters'+str(self.pop_num_iters)+self.pop_feat_list_beh_str))
+
+        # look for saved file
+        if (os.path.exists(self.params_dir+self.nullResponse_fname)==True)&(overwriteFlag==False):
+
+            #load file if it exists
+            self.nullResponse_dict = (self.load_pickle(self.params_dir+
+                                                 self.nullResponse_fname))
+        else:
+            # this function loops through electrodes, and collects random samples of eeg data
+
+            null_popMat = [] 
+
+            # init matrix (trials x time x electrodes)
+            count = 0
+            for uElbl in self.uElbl_list:
+
+                SE = SubjElectrode(subj=uElbl.split('-')[0],elec1_lbl=uElbl.split('-')[1], elec2_lbl=uElbl.split('-')[2],do_init=True)
+
+                if self.isBadElectrode_list[list(self.uElbl_list).index(str(uElbl))]== True:
+                    continue
+                #else
+                count +=1
+
+
+                # load EEG data
+                SE.getPow_2d(pow_evType='FIX_START',pow_frange_lbl = self.pop_pow_frange_lbl,
+                       pow_method = self.pop_pow_method,
+                       pow_evQuery = self.pop_pow_evQuery,
+                       do_zscore = self.pop_do_zscore,
+                       apply_gauss_smoothing = self.pop_apply_gauss_smoothing,
+                       gauss_sd_scaling = self.pop_gauss_sd_scaling,
+                       apply_time_bins=self.pop_apply_time_bins,
+                       time_bin_size_ms=self.pop_time_bin_size_ms)
+
+                # identify time range 
+                # 1000 ms prior to target on (start of pre-event interval)
+                if self.pop_apply_time_bins == True:
+                    segStart_idx = np.argmin(np.absolute(SE.pow_xval+1000))
+                else:     
+                    segStart_idx = np.argmin(np.absolute(SE.pow_xval+SE.ms_to_samples(1000)))
+
+                # On target onset
+                segEnd_idx = np.argmin(np.absolute(SE.pow_xval-0)) 
+
+
+                # populate response matrix based on response model dict 
+                pow_vec = SE.powMat[:,segStart_idx:segEnd_idx,np.newaxis]
+
+
+                # random shuffle in place. This rearranges the order of trials for this electrodes power matrix. This accomplishes two things: 1) randomizes relation to RT, 2) scrambles temporal correlations across electrodes. However, this does not change the average response functio0n
+                np.random.shuffle(pow_vec)
+
+                if count == 1:
+                    null_popMat = pow_vec
+                else:
+                    null_popMat = np.concatenate((null_popMat,pow_vec),axis=2)
+
+
+                # get rt and long trials idx. The order of these data correspond with one another, however, are not correlated with the neural data. Thus, mean RT of long delay trials should still be shorter than short delay trials, but any difference in the measured neural dynamics reflect a difference in measurement method, rather than underlying physiology.
+                if count == 1:
+                    null_rt = SE.pow_ev_filt['RT'].to_numpy()
+                    null_shortTrials_bool = SE.pow_ev_filt.eval('delay==500').to_numpy()
+                    null_longTrials_bool = SE.pow_ev_filt.eval('delay==1500').to_numpy()
+
+  
+                print(count,'/',len(self.uElbl_list))
+
+            #store in dict
+            self.nullResponse_dict = {}
+
+            # update with null pop mat
+            self.nullResponse_dict['null_popMat'] = null_popMat
+            self.nullResponse_dict['null_rt'] = null_rt
+            self.nullResponse_dict['null_shortTrials_bool'] = null_shortTrials_bool
+            self.nullResponse_dict['null_longTrials_bool'] = null_longTrials_bool
+
+            # save pickle
+            self.save_pickle(obj=self.nullResponse_dict,fpath=self.params_dir+self.nullResponse_fname)
+
+        # now we have loaded shuffled neural data.
+
+
+        # Currently not applying filter bool (same null distribution across groups)
+        # apply electrode filt bool (outside if/then statement)
+        #self.nullResponse_dict['null_popMat'] = self.nullResponse_dict['null_popMat'][:,:,self.thisSubjFilt_bool]
+
+        # calculate traj params by RT (Measurement window)
+        self.nullResponse_dict.update(self.pop_getTrajParams(popMat3d=self.nullResponse_dict['null_popMat'],rts_ms=self.nullResponse_dict['null_rt']))     
+
+        # Calculate delay related differences in traj params computed on shuffled neural data
+        # list of traj pararms to compare
+        trajParam_list = ['SR_dist','SR_rate','SR_speed','SR_pathlength','SR_var','SR_headingCorrect',
+        'SR_speed_ps','SR_pathlength_ps','SR_var_ps','SR_speed_pr','SR_pathlength_pr','SR_var_pr'] 
+
+        # cond labels for difference measures
+        cond_a = self.nullResponse_dict['null_longTrials_bool']
+        cond_b = self.nullResponse_dict['null_shortTrials_bool']
+
+        for f in trajParam_list:
+            self.nullResponse_dict['popByDelay_'+f+'Mean_diff_null'] = np.nanmean(self.nullResponse_dict[f][cond_a]) - np.nanmean(self.nullResponse_dict[f][cond_b])
+            self.nullResponse_dict['popByDelay_'+f+'Std_diff_null'] = np.nanstd(self.nullResponse_dict[f][cond_a]) - np.nanstd(self.nullResponse_dict[f][cond_b])
+ 
+
 
 
     def pop_getRoiList(self):
@@ -13364,12 +14813,6 @@ class SubjCollection(Collection):
         # fixed_dur in samp 
         fixed_dur_samp = int(self.ms_to_samples(fixed_dur_ms))
 
-        # init St_mat (brain state at time of response)
-        St_mat = np.zeros(S0_mat.shape)
-        St_mat[:] = np.nan
-
-
-
         # init St_mat: response (trials x electrodes)
         St_mat = np.zeros(S0_mat.shape)
         St_mat[:] = np.nan
@@ -13381,6 +14824,26 @@ class SubjCollection(Collection):
         # SR_speed - mean change in state per time step
         SR_speed = np.zeros(np.shape(popMat3d)[0])
         SR_speed[:] = np.nan
+
+        # SR_speed_ps - mean change in state per time step (from stim onset to fixed_dur ms)
+        SR_speed_ps = np.zeros(np.shape(popMat3d)[0])
+        SR_speed_ps[:] = np.nan
+
+        # SR_speed_pr - mean change in state per time step (from fixed_dur ms to resp)
+        SR_speed_pr = np.zeros(np.shape(popMat3d)[0])
+        SR_speed_pr[:] = np.nan
+
+        # SR_pathlength - total distance covered
+        SR_pathlength = np.zeros(np.shape(popMat3d)[0])
+        SR_pathlength[:] = np.nan
+
+        # SR_pathlength - total distance covered (from stim onset to fixed_dur ms)
+        SR_pathlength_ps = np.zeros(np.shape(popMat3d)[0])
+        SR_pathlength_ps[:] = np.nan
+
+        # SR_pathlength - total distance covered (from fixed_dur ms to resp)
+        SR_pathlength_pr = np.zeros(np.shape(popMat3d)[0])
+        SR_pathlength_pr[:] = np.nan
 
         # SR_var- brain state variability per trial
         SR_var = np.zeros(np.shape(popMat3d)[0])
@@ -13421,37 +14884,144 @@ class SubjCollection(Collection):
             t_idx = np.arange(0,np.shape(dist_thisTrial)[0]-1)
             SR_speed[t] = np.nanmean(dist_thisTrial[t_idx,t_idx+1])
 
+            #calc SR_pathlength (summed distance between t and t+1)
+            SR_pathlength[t] = np.nansum(dist_thisTrial[t_idx,t_idx+1])
+
             # calculate SR_variability (mean distance from response point, which we are using as our fixed point. Alternatively, use stim as reference point).
             # bottom row of dist_thisTrial gives pairwise distances between St brain state and all other time points
             SR_var[t] = np.nanmean(dist_thisTrial[-1,:])
+
+            # calculate heading index (s-r distance at stim onset/s-r distance at fixed dur samp). > 1 indicates we are moving towards response, < 1 indicates we're moving away from response
+            SR_headingCorrect[t] = dist_thisTrial[0,-1]/dist_thisTrial[fixed_dur_samp,-1]
+
+            # POST STIM MEASURES
+            # Calculate these parameters for fixed short intervals (~200 ms) following stimulus
+            t_idx = np.arange(0,fixed_dur_samp-1)
+            SR_speed_ps[t] = np.nanmean(dist_thisTrial[t_idx,t_idx+1])
+
+            #calc SR_pathlength (summed distance between t and t+1)
+            SR_pathlength_ps[t] = np.nansum(dist_thisTrial[t_idx,t_idx+1])
 
             # calculate SR_variability (post stim)
             # top row of dist_thisTrial gives pairwise distances between S0 brain state and all other time points. Just take the mean distance for fixed_dur_samp
             SR_var_ps[t] = np.nanmean(dist_thisTrial[0,:fixed_dur_samp])
 
-            # calculate SR_variability (post stim)
-            # bottom row of dist_thisTrial gives pairwise distances between St brain state and all other time points. Just take the mean distance for fixed_dur_samp prior to response
+
+
+            # PRERESPONSE MEASURES
+            # Calculate these parameters for fixed short intervals (~200 ms) prior to stimulus stimulus
             pre_resp_samp_start = (np.shape(dist_thisTrial)[0]-fixed_dur_samp)
+            t_idx = np.arange(pre_resp_samp_start,np.shape(dist_thisTrial)[0]-1)
+            SR_speed_pr[t] = np.nanmean(dist_thisTrial[t_idx,t_idx+1])
+            SR_pathlength_pr[t] = np.nansum(dist_thisTrial[t_idx,t_idx+1])
+
+            # calculate SR_variability (pre response)
+            # bottom row of dist_thisTrial gives pairwise distances between St brain state and all other time points. Just take the mean distance for fixed_dur_samp prior to response
+            
+            # Calculate these parameters for fixed short intervals (~200 ms) prior to response
             SR_var_pr[t] = np.nanmean(dist_thisTrial[-1,pre_resp_samp_start:])
 
-            # calculate heading index (s-r distance at stim onset/s-r distance at fixed dur samp). > 1 indicates we are moving towards response, < 1 indicates we're moving away from response
-            SR_headingCorrect[t] = dist_thisTrial[0,-1]/dist_thisTrial[fixed_dur_samp,-1]
-  
         # SR_rate ...SR_distance/response time in seconds
         SR_rate = SR_dist/(rts_ms/1000)
 
 
         # return dict
         trajParam_dict = {}
+        trajParam_dict['S0cen'] = np.nanmean(S0_mat,axis=1) # mean value (centroid of population activity at stimulus onset
+        trajParam_dict['Stcen'] = np.nanmean(St_mat,axis=1) # mean value at population activity at time of response
         trajParam_dict['SR_dist'] = SR_dist
         trajParam_dict['SR_rate'] = SR_rate
         trajParam_dict['SR_speed'] = SR_speed
+        trajParam_dict['SR_speed_ps'] = SR_speed_ps
+        trajParam_dict['SR_speed_pr'] = SR_speed_pr
+        trajParam_dict['SR_pathlength'] = SR_pathlength
+        trajParam_dict['SR_pathlength_ps'] = SR_pathlength_ps
+        trajParam_dict['SR_pathlength_pr'] = SR_pathlength_pr
         trajParam_dict['SR_var'] = SR_var
         trajParam_dict['SR_var_ps'] = SR_var_ps
         trajParam_dict['SR_var_pr'] = SR_var_pr
         trajParam_dict['SR_headingCorrect'] = SR_headingCorrect
 
         return trajParam_dict
+
+    def pop_getTrajParams_byPC(self,popMat3d_pc,overwriteFlag=False):
+        """This function calculates trajParams and delay related differences in traj params by PC. It computes differences individually for each PC and cumulatively as you aggregate PC"""
+
+        # check if we have already computed this
+        
+        this_fname = 'popTrajParamsByPC-'+self.popResponse_fname
+        if (os.path.exists(self.params_dir+this_fname)==True)&(overwriteFlag==False):
+            
+            #load file if it exists
+            thisSubjTrajParamsData = (self.load_pickle(self.params_dir+
+                                                 this_fname))
+
+            # unpack it
+            trajParamsByPC_df = thisSubjTrajParamsData[0]
+            trajParamsByPC_df_cum = thisSubjTrajParamsData[1]
+
+
+        else:
+            # if not, compute it
+
+            # define subfunction
+            def compute_difference_local(trajParams_dict):
+                f_list = list(trajParams_dict.keys())
+
+                short_delay_idx = self.popResponse_dict['pop_shortTrials_bool']
+                long_delay_idx = self.popResponse_dict['pop_longTrials_bool']
+
+                for f in f_list:
+
+                    # take difference in mean between neural parameter in long and short condition 
+                    trajParams_dict[f+'Mean_diff'] = np.nanmean(trajParams_dict[f][long_delay_idx]) - np.nanmean(trajParams_dict[f][short_delay_idx])
+
+                return trajParams_dict
+
+            # define containers
+            trajParams_byPC = []
+            trajParams_byPC_cum = []
+
+            # num of dimensions is number of electrodes
+            n_dim = popMat3d_pc.shape[2]
+
+            for i in np.arange(0,n_dim):
+
+                # indivudual PC
+                #note - this indexing keeps the dimensions the same when slicing
+                trajParams_dict = self.pop_getTrajParams(popMat3d_pc[:,:,i:i+1],self.popResponse_dict['rt'])
+
+                # update dict by computing delay related differences
+                trajParams_dict = compute_difference_local(trajParams_dict)
+     
+                #update list
+                trajParams_byPC.append(trajParams_dict)
+
+                # Cumulative PC
+                # cumulative computation of traj params
+                trajParams_dict_cum = self.pop_getTrajParams(popMat3d_pc[:,:,:i+1],self.popResponse_dict['rt'])
+
+                # update dict by computing delay related differences
+                trajParams_dict_cum = compute_difference_local(trajParams_dict_cum)
+
+                #update list
+                trajParams_byPC_cum.append(trajParams_dict_cum)
+
+                print(i)
+
+            # convert lists to dataframe
+            trajParamsByPC_df = pd.DataFrame(trajParams_byPC)
+            trajParamsByPC_df_cum = pd.DataFrame(trajParams_byPC_cum)
+
+            # save it
+            thisSubjTrajParamsData = [trajParamsByPC_df,trajParamsByPC_df_cum]
+
+            self.save_pickle(obj = thisSubjTrajParamsData,
+                             fpath = self.params_dir+this_fname)
+
+        # return
+        return trajParamsByPC_df,trajParamsByPC_df_cum
+
 
     def pop_getPCAParams(self,popMat3d_pc,rts_ms,targOn_offset_samp = None):
         # this function gets population-activity parameters (trial by trial measures of starting point and response threshold in PCA coordinates)
@@ -13485,7 +15055,7 @@ class SubjCollection(Collection):
         pcaParam_dict['St_pc'] = St_pc
 
         return pcaParam_dict
-    def pop_doStats(self,n_iters = 1000,overwriteFlag=False):
+    def pop_doStats(self,n_iters = 1,overwriteFlag=True):
         # this function runs all stats relating trajectory params and PCA coords to various behavioral variables
 
 
@@ -13607,8 +15177,7 @@ class SubjCollection(Collection):
 
 
             #list of neural features we care about for stats
-            feat_to_copy = ['SR_dist', 'SR_rate','SR_speed','SR_var','SR_headingCorrect']#,'S0_pc','St_pc'
-
+            feat_to_copy = ['S0cen','Stcen','SR_dist', 'SR_rate','SR_speed','SR_pathlength','SR_var','SR_headingCorrect','SR_speed_ps','SR_pathlength_ps','SR_var_ps','SR_speed_pr','SR_pathlength_pr','SR_var_pr'] 
 
             # # we have to recompute S-R distance and S-R rate using the provided rt_ms that are potentially shuffled. This ensures that  the null stats we perform below should capture any intrinsic relationship one might observe between distance and time)
 
@@ -14624,6 +16193,129 @@ class SubjCollection(Collection):
         ax.set_xticks([1,2])
         ax.set_xticklabels(cond_lbl)
         ax.set_title('t stat:'+str(np.round(tstat,2))+'; pval:'+str(np.round(pval,2))+'\n f stat:'+str(np.round(fstat,2))+'; pval:'+str(np.round(pval_anov,2)))
+
+    def pop_plotPCOverTime(self,popMat2d_pc=None,pc_dim=None,trial_len_samp=None,rts_ms=None, targOn_offset_samp = None,respLocked_ms_pre=None,respLocked_ms_post=None):
+        """ 
+        This function plots a principal component over time. It uses information stored in self.popResponse_dict
+
+        Inputs:
+        #popMat2d_pc .... 2d array (time(all trials concatenated) x electrodes)
+        #trial_len_samp... int. indicating number of samples for each trial (it uses this to identify trial start and stop).
+        #rt_ms .... 1d array with RTs in ms matched to popMat2d (from stimulus onset time)
+        #targOn_offset_samp ... if None, assumes that each trial starts with stim onset time. 
+
+        Outputs:
+
+        """
+
+        #parse inputs
+        if pc_dim is None:
+            pc_dim = 1
+        if popMat2d_pc is None:
+            popMat2d_pc = self.popResponse_dict['popMat2d_pc']
+
+        if trial_len_samp is None:
+            trial_len_samp = int(np.shape(self.popResponse_dict['popMat'])[1])
+
+        # compute num of trials
+        n_trials = int(np.shape(popMat2d_pc)[0]/trial_len_samp)
+
+        if targOn_offset_samp is None:
+            targOn_offset_samp = np.zeros(n_trials)
+
+        if rts_ms is None:
+            rts_ms = self.popResponse_dict['rt']
+
+        if respLocked_ms_pre is None:
+            respLocked_ms_pre = 250 # 500 ms pre
+
+        if respLocked_ms_post is None:
+            respLocked_ms_post = 250 # 500 ms pre
+
+
+        # get rts in samp
+        rts_samp = self.ms_to_samples(rts_ms)
+
+        # short delay bool
+        shortTrials_bool = self.popResponse_dict['pop_shortTrials_bool']
+        longTrials_bool = self.popResponse_dict['pop_longTrials_bool']
+
+        #loop through trials and populate matrices for short and long delay trials
+        trials_ = np.arange(0,n_trials)
+
+        # containers to hold trial by trial data
+        pcMat_ccLocked = np.zeros((n_trials,trial_len_samp))
+        pcMat_ccLocked[:] =np.nan
+
+        pcMat_respLocked = np.zeros((n_trials,int(self.ms_to_samples(respLocked_ms_pre)+self.ms_to_samples(respLocked_ms_post))))
+        pcMat_respLocked[:] =np.nan
+
+        for i in trials_:
+            samp_start = (((i+1)*trial_len_samp) - trial_len_samp) 
+            samp_end = (i+1)*trial_len_samp
+
+            # identify stim on sample, trial end sample for this trial
+            stimOn_idx_thisTrial = samp_start+targOn_offset_samp[i]
+            trialEnd_idx_thisTrial = samp_end
+            
+            # populate the stim locked matrix
+            pcMat_ccLocked[i,:] = popMat2d_pc[int(stimOn_idx_thisTrial):trialEnd_idx_thisTrial,pc_dim-1]
+
+            # identify rt sample for this trial
+
+            #populate response locked matrix (500 ms prior and 500 ms post)
+            rt_idx_thisTrial =  int(stimOn_idx_thisTrial+rts_samp[i])
+            respLocked_samp_start = rt_idx_thisTrial - int(self.ms_to_samples(respLocked_ms_pre))
+            respLocked_samp_end = rt_idx_thisTrial + int(self.ms_to_samples(respLocked_ms_post))
+
+            pcMat_respLocked[i,:] = popMat2d_pc[respLocked_samp_start:respLocked_samp_end,pc_dim-1]
+
+
+        # plot 2 x 2 (short delay vs. long delay x cc locked vs. response locked)
+        f,ax = plt.subplots(2,2,sharey='row')
+
+        # plot cc locked short delay
+        plt.axes(ax[0,0])
+        pc_mean = np.nanmean(pcMat_ccLocked[shortTrials_bool,:],axis=0)
+        pc_sem = stats.sem(pcMat_ccLocked[shortTrials_bool,:],axis=0)
+        plt.plot(pc_mean,color = '0.5')
+        plt.fill_between(np.arange(0,len(pc_mean)),pc_mean+pc_sem,pc_mean-pc_sem,alpha=0.5,color = 'C0')
+
+
+        # plot cc locked long delay
+        plt.axes(ax[0,1])
+        pc_mean = np.nanmean(pcMat_ccLocked[longTrials_bool,:],axis=0)
+        pc_sem = stats.sem(pcMat_ccLocked[longTrials_bool,:],axis=0)
+        plt.plot(pc_mean,color = '0.5')
+        plt.fill_between(np.arange(0,len(pc_mean)),pc_mean+pc_sem,pc_mean-pc_sem,alpha=0.5,color = 'C1')
+       
+
+        # plot resp locked short
+        plt.axes(ax[1,0])
+        pc_mean = np.nanmean(pcMat_respLocked[shortTrials_bool,:],axis=0)
+        pc_sem = stats.sem(pcMat_respLocked[shortTrials_bool,:],axis=0)
+        plt.plot(pc_mean,color = '0.5')
+        plt.fill_between(np.arange(0,len(pc_mean)),pc_mean+pc_sem,pc_mean-pc_sem,alpha=0.5,color = 'C0')
+
+        # plot resp locked long
+        plt.axes(ax[1,1])
+        pc_mean = np.nanmean(pcMat_respLocked[longTrials_bool,:],axis=0)
+        pc_sem = stats.sem(pcMat_respLocked[longTrials_bool,:],axis=0)
+        plt.plot(pc_mean,color = '0.5')
+        plt.fill_between(np.arange(0,len(pc_mean)),pc_mean+pc_sem,pc_mean-pc_sem,alpha=0.5,color = 'C1')
+
+
+
+
+
+
+        # two subplots - 1) short delay trials, 2) long delay trials
+
+        # option to align to target onset (S1, fixOn), stimulus onset (S2, ccLocked), or response (R, response locked)
+
+        # option to aggregate across trials or plot a subset of trials  
+
+
 
 
 
